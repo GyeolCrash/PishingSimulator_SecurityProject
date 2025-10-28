@@ -1,8 +1,8 @@
 package handler
 
 import (
-	"FishingSimulator_SecurityProject/internal/auth"
-	"FishingSimulator_SecurityProject/internal/simulation"
+	"PishingSimulator_SecurityProject/internal/auth"
+	"PishingSimulator_SecurityProject/internal/simulation"
 	"fmt"
 	"log"
 	"net/http"

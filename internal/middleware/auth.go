@@ -1,7 +1,7 @@
 package middleware
 
 import (
-	"FishingSimulator_SecurityProject/internal/auth"
+	"PishingSimulator_SecurityProject/internal/auth"
 	"net/http"
 	"strings"
 

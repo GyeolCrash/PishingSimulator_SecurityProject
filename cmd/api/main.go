@@ -1,8 +1,8 @@
 package main
 
 import (
-	"FishingSimulator_SecurityProject/internal/handler"
-	"FishingSimulator_SecurityProject/internal/middleware"
+	"PishingSimulator_SecurityProject/internal/handler"
+	"PishingSimulator_SecurityProject/internal/middleware"
 	"log"
 
 	"github.com/gin-contrib/cors"

@@ -3,8 +3,8 @@ package handler
 import (
 	"net/http"
 
-	"FishingSimulator_SecurityProject/internal/auth"
-	"FishingSimulator_SecurityProject/internal/models"
+	"PishingSimulator_SecurityProject/internal/auth"
+	"PishingSimulator_SecurityProject/internal/models"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"

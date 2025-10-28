@@ -1,4 +1,4 @@
-module FishingSimulator_SecurityProject
+module PishingSimulator_SecurityProject
 
 go 1.25.1
 

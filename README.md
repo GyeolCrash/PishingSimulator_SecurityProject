@@ -21,14 +21,20 @@
 ### **2.2. 설치 및 실행**
 
 1. 저장소 클론:  
+```
    git clone \[https://github.com/your-username/FishingSimulator\_SecurityProject.git\](https://github.com/your-username/FishingSimulator\_SecurityProject.git)  
    cd FishingSimulator\_SecurityProject
+```
 
-2. 의존성 설치:  
+2. 의존성 설치:
+```  
    go mod tidy
+```
 
-3. 서버 실행:  
+3. 서버 실행:
+```  
    go run cmd/api/main.go
+```
 
    서버가 http://localhost:8080에서 실행됩니다.
 
@@ -45,7 +51,7 @@
   서버가 실행되면 testdata/received/ 디렉토리가 자동으로 생성되며, voice 모드로 수신된 오디오 파일이 이곳에 저장됩니다.
 
 ## **3\. 디렉토리 구조 (Directory Structure)**
-
+```
 FishingSimulator\_SecurityProject/  
 ├── cmd/api/  
 │   └── main.go               \# \[실행\] 서버 시작점, 라우터 설정  
@@ -68,3 +74,4 @@ FishingSimulator\_SecurityProject/
 ├── go.mod  
 ├── go.sum  
 └── README.md                 \# (본 파일)  
+```

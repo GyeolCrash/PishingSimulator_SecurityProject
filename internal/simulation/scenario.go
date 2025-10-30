@@ -1,10 +1,12 @@
 package simulation
 
+// Define Scenario
 type Scenario struct {
 	Name        string
 	Description string
 }
 
+// Define types of scenarios
 var scenarios = map[string]Scenario{
 	"institution_impersonation": {
 		Name:        "Institution Impersonation",
@@ -24,6 +26,7 @@ var scenarios = map[string]Scenario{
 	},
 }
 
+// Getter for scenarios
 func GetScenario(scenarioKey string) (Scenario, bool) {
 	scenario, exists := scenarios[scenarioKey]
 	return scenario, exists

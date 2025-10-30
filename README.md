@@ -21,19 +21,19 @@
 ### **2.2. 설치 및 실행**
 
 1. 저장소 클론:  
-```
-   git clone \[https://github.com/your-username/FishingSimulator\_SecurityProject.git\](https://github.com/your-username/FishingSimulator\_SecurityProject.git)  
-   cd FishingSimulator\_SecurityProject
+```bash
+git clone \[https://github.com/your-username/FishingSimulator\_SecurityProject.git\](https://github.com/your-username/FishingSimulator\_SecurityProject.git)  
+cd FishingSimulator\_SecurityProject
 ```
 
 2. 의존성 설치:
-```  
-   go mod tidy
+```bash 
+go mod tidy
 ```
 
 3. 서버 실행:
-```  
-   go run cmd/api/main.go
+```bash  
+go run cmd/api/main.go
 ```
 
    서버가 http://localhost:8080에서 실행됩니다.

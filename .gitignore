@@ -405,3 +405,4 @@ FodyWeavers.xsd
 .DS_Store
 .idea/
 .log
+.db

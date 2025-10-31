@@ -56,7 +56,7 @@ func manageAudioSession(conn *websocket.Conn, username string, parentCtx context
 	go func() {
 		defer wg.Done()
 		defer cancel()
-		runTestSimulationLogic(username, clientAudioInChannel, clientAudioOutChannel, ctx)
+		runBinaryEchoLogic(username, clientAudioInChannel, clientAudioOutChannel, ctx)
 	}()
 	wg.Wait()
 }
@@ -114,29 +114,34 @@ func clientWritePump(conn *websocket.Conn, username string, clientAudioOutChanne
 	}
 }
 
-func runTestSimulationLogic(username string, clientAudioInChannel <-chan []byte, serverAudioOutChannel chan<- []byte, ctx context.Context) {
-	log.Printf("runTestSimulationLogic(): started for user: %s", username)
+// 오디오 에코, 저장
+// 제대로 동작하지 않는다면 handleReceiveAudio() 주석 처리
+func runBinaryEchoLogic(username string, clientAudioInChannel <-chan []byte, serverAudioOutChannel chan<- []byte, ctx context.Context) {
+	log.Printf("runBinaryEchoLogic(): started for user: %s", username)
 	defer close(serverAudioOutChannel)
 
 	for {
 		select {
 		case <-ctx.Done():
-			log.Printf("runTestSimulationLogic(): Canceled with %s", username)
+			log.Printf("runBinaryEchoLogic(): Canceled with %s", username)
 			return
 		case audioData, ok := <-clientAudioInChannel:
 			if !ok {
-				log.Printf("runTestSimulationLogic(): client audio in channel closed for user: %s", username)
+				log.Printf("runBinaryEchoLogic(): client audio in channel closed for user: %s", username)
 				return
 			}
 			handleReceiveAudio(audioData, username)
-
 			if mockAudioResponse != nil {
 				serverAudioOutChannel <- mockAudioResponse
 			}
+			log.Printf("runBinaryEchoLogic(): Echoing audio data for user: %s, %d bytes", username, len(audioData))
+			serverAudioOutChannel <- audioData
 		}
+
 	}
 }
 
+// 오디오 파일 저장
 func handleReceiveAudio(message []byte, username string) {
 	count := audioFileCounter.Add(1)
 	fileName := fmt.Sprintf("%s_audio_%d.wav", username, count)

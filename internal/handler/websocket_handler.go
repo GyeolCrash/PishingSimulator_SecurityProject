@@ -71,5 +71,9 @@ func HandleSimulationConnection(c *gin.Context) {
 		manageTextSession(conn, username)
 	case "voice":
 		manageAudioSession(conn, username, context.Background())
+	default:
+		// add error handling for unsupported mode
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		log.Printf("Unsupported mode for user %s: %s", username, mode)
 	}
 }

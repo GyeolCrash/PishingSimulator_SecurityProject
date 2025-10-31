@@ -3,6 +3,7 @@ package main
 import (
 	"PishingSimulator_SecurityProject/internal/handler"
 	"PishingSimulator_SecurityProject/internal/middleware"
+	"PishingSimulator_SecurityProject/internal/storage"
 	"log"
 
 	"github.com/gin-contrib/cors"
@@ -10,6 +11,7 @@ import (
 )
 
 func main() {
+	storage.InitDB()
 	router := gin.Default()
 
 	// CORS 설정

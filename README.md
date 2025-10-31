@@ -26,7 +26,13 @@ git clone https://github.com/GyeolCrash/PishingSimulator_SecurityProject.git
 ```
 
 2. 의존성 설치:
-```bash 
+```bash
+go get github.com/gin-contrib/cors
+go get github.com/gin-gonic/gin
+go get github.com/gorilla/websocket
+go get modernc.org/sqlite
+
+
 go mod tidy
 ```
 

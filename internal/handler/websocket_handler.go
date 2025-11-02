@@ -19,7 +19,22 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-// Handle WebSocket connection for client-side simulation
+// HandleSimulation godoc
+// @Summary      시뮬레이션 WebSocket 연결
+// @Description  지정된 시나리오와 모드로 실시간 시뮬레이션을 위한 WebSocket 연결을 시작합니다.
+// @Description  <br>
+// @Description  **참고: 이것은 표준 HTTP API가 아닙니다.**
+// @Description  클라이언트는 `ws://` 또는 `wss://` 스킴을 사용하여 이 엔드포인트에 연결해야 합니다.
+// @Description  인증은 HTTP Header가 아닌 **쿼리 파라미터('token')**를 통해 수행됩니다.
+// @Tags         WebSocket (Simulation)
+// @Param        token    query     string  true  "로그인 시 발급받은 JWT 토큰"
+// @Param        scenario query     string  true  "시나리오 키 (예: loan_scam)"
+// @Param        mode     query     string  true  "시뮬레이션 모드 (text 또는 voice)"
+// @Success      101      {string}  string  "101 Switching Protocols (WebSocket으로 프로토콜 전환 성공)"
+// @Failure      400      {object}  handler.ErrorResponse "잘못된 파라미터 (scenario, mode)"
+// @Failure      401      {object}  handler.ErrorResponse "토큰 누락 또는 유효하지 않은 토큰"
+// @Failure      500      {object}  handler.ErrorResponse "WebSocket 업그레이드 실패"
+// @Router       /ws/simulation [get]
 func HandleSimulationConnection(c *gin.Context) {
 
 	// URL Query 파라미터 추출

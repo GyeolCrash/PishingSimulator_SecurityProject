@@ -1,0 +1,183 @@
+basePath: /
+definitions:
+  handler.ErrorResponse:
+    properties:
+      error:
+        example: Username already exists
+        type: string
+    type: object
+  handler.LoginRequest:
+    properties:
+      password:
+        example: password123
+        type: string
+      username:
+        example: my_user
+        type: string
+    type: object
+  handler.LoginSuccessResponse:
+    properties:
+      token:
+        example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        type: string
+    type: object
+  handler.SignupRequest:
+    properties:
+      password:
+        example: password123
+        type: string
+      username:
+        example: new_user
+        type: string
+    type: object
+  handler.SuccessResponse:
+    properties:
+      message:
+        example: User created successfully
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  title: Phising Simulator API
+  version: "0.1"
+paths:
+  /api/profile:
+    get:
+      description: 인증된 사용자의 프로필 정보를 조회합니다. (JWT 필요)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            properties:
+              ' username':
+                type: string
+              message:
+                type: string
+            type: object
+        "401":
+          description: 인증 토큰 누락 또는 만료
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 프로필 조회 (Profile)
+      tags:
+      - API (Protected)
+  /login:
+    post:
+      consumes:
+      - application/json
+      description: 사용자명과 비밀번호로 로그인하고 JWT 토큰을 발급받습니다.
+      parameters:
+      - description: 로그인 요청 정보
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.LoginSuccessResponse'
+        "400":
+          description: 잘못된 요청
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "401":
+          description: 인증 실패 (자격 증명 오류)
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: 서버 내부 오류
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 로그인 (Login)
+      tags:
+      - Auth
+  /signup:
+    post:
+      consumes:
+      - application/json
+      description: 새로운 사용자 계정을 생성합니다.
+      parameters:
+      - description: 회원가입 요청 정보
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.SignupRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.SuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 회원가입 (Signup)
+      tags:
+      - Auth
+  /ws/simulation:
+    get:
+      description: |-
+        지정된 시나리오와 모드로 실시간 시뮬레이션을 위한 WebSocket 연결을 시작합니다.
+        <br>
+        **참고: 이것은 표준 HTTP API가 아닙니다.**
+        클라이언트는 `ws://` 또는 `wss://` 스킴을 사용하여 이 엔드포인트에 연결해야 합니다.
+        인증은 HTTP Header가 아닌 **쿼리 파라미터('token')**를 통해 수행됩니다.
+      parameters:
+      - description: 로그인 시 발급받은 JWT 토큰
+        in: query
+        name: token
+        required: true
+        type: string
+      - description: '시나리오 키 (예: loan_scam)'
+        in: query
+        name: scenario
+        required: true
+        type: string
+      - description: 시뮬레이션 모드 (text 또는 voice)
+        in: query
+        name: mode
+        required: true
+        type: string
+      responses:
+        "101":
+          description: 101 Switching Protocols (WebSocket으로 프로토콜 전환 성공)
+          schema:
+            type: string
+        "400":
+          description: 잘못된 파라미터 (scenario, mode)
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "401":
+          description: 토큰 누락 또는 유효하지 않은 토큰
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: WebSocket 업그레이드 실패
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 시뮬레이션 WebSocket 연결
+      tags:
+      - WebSocket (Simulation)
+securityDefinitions:
+  BearerAuth:
+    description: Bearer 토큰 형식, Bearer {token}
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

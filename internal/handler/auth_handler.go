@@ -15,11 +15,39 @@ import (
 
 // var users = make(map[string]models.User)
 
+type SignupRequest struct {
+	Username string `json:"username" example:"new_user"`
+	Password string `json:"password" example:"password123"`
+}
+
+type LoginRequest struct {
+	Username string `json:"username" example:"my_user"`
+	Password string `json:"password" example:"password123"`
+}
+
+type SuccessResponse struct {
+	Message string `json:"message" example:"User created successfully"`
+}
+type ErrorResponse struct {
+	Error string `json:"error" example:"Username already exists"`
+}
+type LoginSuccessResponse struct {
+	Token string `json:"token" example:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."`
+}
+
+// Signup godoc
+// @Summary      회원가입 (Signup)
+// @Description  새로운 사용자 계정을 생성합니다.
+// @Tags         Auth
+// @Accept       json
+// @Produce      json
+// @Param        request body handler.SignupRequest true "회원가입 요청 정보"
+// @Success      200 {object} handler.SuccessResponse
+// @Failure      400 {object} handler.ErrorResponse
+// @Failure      500 {object} handler.ErrorResponse
+// @Router       /signup [post]
 func Signup(c *gin.Context) {
-	var credentials struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-	}
+	var credentials SignupRequest
 
 	if err := c.ShouldBindJSON(&credentials); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
@@ -63,11 +91,20 @@ func Signup(c *gin.Context) {
 
 }
 
+// Login godoc
+// @Summary      로그인 (Login)
+// @Description  사용자명과 비밀번호로 로그인하고 JWT 토큰을 발급받습니다.
+// @Tags         Auth
+// @Accept       json
+// @Produce      json
+// @Param        request body handler.LoginRequest true "로그인 요청 정보"
+// @Success      200 {object} handler.LoginSuccessResponse
+// @Failure      400 {object} handler.ErrorResponse "잘못된 요청"
+// @Failure      401 {object} handler.ErrorResponse "인증 실패 (자격 증명 오류)"
+// @Failure      500 {object} handler.ErrorResponse "서버 내부 오류"
+// @Router       /login [post]
 func Login(c *gin.Context) {
-	var credentials struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-	}
+	var credentials LoginRequest
 
 	if err := c.ShouldBindJSON(&credentials); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
@@ -122,6 +159,15 @@ func Login(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"token": tokenString})
 }
 
+// Profile godoc
+// @Summary      프로필 조회 (Profile)
+// @Description  인증된 사용자의 프로필 정보를 조회합니다. (JWT 필요)
+// @Tags         API (Protected)
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200 {object} object{message=string, username=string}
+// @Failure      401 {object} handler.ErrorResponse "인증 토큰 누락 또는 만료"
+// @Router       /api/profile [get]
 func Profile(c *gin.Context) {
 	username, _ := c.Get("username")
 	c.JSON(http.StatusOK, gin.H{"message": "this is a protected profile", "username": username})

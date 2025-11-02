@@ -8,7 +8,22 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+
+	_ "PishingSimulator_SecurityProject/docs"
+
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
+
+// @title Phising Simulator API
+// @version 						0.1
+// @description
+// @host 							localhost:8080
+// @BasePath 						/
+// @securityDefinitions.apikey		BearerAuth
+// @in header
+// @name Authorization
+// @description Bearer 토큰 형식, Bearer {token}
 
 func main() {
 	storage.InitDB()
@@ -32,5 +47,8 @@ func main() {
 
 	// WebSocket 핸들러
 	router.GET("/ws/simulation", handler.HandleSimulationConnection)
+
+	// Swagger
+	router.GET("/swagger/*any", ginSwagger.WrapHandler((swaggerFiles.Handler)))
 	log.Fatal(router.Run(":8080"))
 }

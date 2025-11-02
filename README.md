@@ -60,6 +60,10 @@ go run cmd/api/main.go
 FishingSimulator\_SecurityProject/  
 ├── cmd/api/  
 │   └── main.go               \# \[실행\] 서버 시작점, 라우터 설정  
+├── docs/  
+│   ├── docs.go
+│   ├── swagger.json
+│   └── swagger.yaml
 ├── internal/  
 │   ├── auth/  
 │   │   └── token.go          \# \[로직\] JWT 토큰 생성 및 검증  

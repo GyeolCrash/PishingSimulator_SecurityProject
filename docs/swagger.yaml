@@ -26,6 +26,8 @@ definitions:
       password:
         example: password123
         type: string
+      profile:
+        $ref: '#/definitions/models.UserProfile'
       username:
         example: new_user
         type: string
@@ -34,6 +36,15 @@ definitions:
     properties:
       message:
         example: User created successfully
+        type: string
+    type: object
+  models.UserProfile:
+    properties:
+      age:
+        type: integer
+      gender:
+        type: string
+      name:
         type: string
     type: object
 host: localhost:8080

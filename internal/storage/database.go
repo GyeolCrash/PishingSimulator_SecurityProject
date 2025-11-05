@@ -24,7 +24,10 @@ func InitDB() {
 	CREATE TABLE IF NOT EXISTS users (
 			"id" INTEGER PRIMARY KEY AUTOINCREMENT, 
 			"username" TEXT NOT NULL UNIQUE,
-			"password_hash" TEXT NOT NULL
+			"password_hash" TEXT NOT NULL,
+			"name" TEXT,
+			"age" INTEGER,
+			"gender" TEXT
 	);`
 	createRecordingsTable := `
 	CREATE TABLE IF NOT EXISTS recordings (

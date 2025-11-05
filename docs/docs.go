@@ -250,6 +250,9 @@ const docTemplate = `{
                     "type": "string",
                     "example": "password123"
                 },
+                "profile": {
+                    "$ref": "#/definitions/models.UserProfile"
+                },
                 "username": {
                     "type": "string",
                     "example": "new_user"
@@ -262,6 +265,20 @@ const docTemplate = `{
                 "message": {
                     "type": "string",
                     "example": "User created successfully"
+                }
+            }
+        },
+        "models.UserProfile": {
+            "type": "object",
+            "properties": {
+                "age": {
+                    "type": "integer"
+                },
+                "gender": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
                 }
             }
         }

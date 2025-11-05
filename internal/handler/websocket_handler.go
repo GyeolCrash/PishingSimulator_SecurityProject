@@ -3,6 +3,7 @@ package handler
 import (
 	"PishingSimulator_SecurityProject/internal/auth"
 	"PishingSimulator_SecurityProject/internal/simulation"
+	"PishingSimulator_SecurityProject/internal/storage"
 	"context"
 	"fmt"
 	"log"
@@ -62,6 +63,13 @@ func HandleSimulationConnection(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid mode"})
 		return
 	}
+
+	user, err := storage.GetUserByUsername(username)
+	if err != nil {
+		log.Printf("HandleSimulationConnection(): Failed to get user info for websocket: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve user"})
+		return
+	}
 	log.Printf("User: %s, Scenario: %s, Mode: %s", username, scenario.Name, mode)
 
 	// WebSocket 연결 업그레이드과 종료
@@ -83,9 +91,9 @@ func HandleSimulationConnection(c *gin.Context) {
 	// 모드에 따른 세션 관리
 	switch mode {
 	case "text":
-		manageTextSession(conn, username)
+		manageTextSession(conn, user, context.Background(), scenarioKey)
 	case "voice":
-		manageAudioSession(conn, username, context.Background())
+		manageAudioSession(conn, user, context.Background(), scenarioKey)
 	default:
 		// add error handling for unsupported mode
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})

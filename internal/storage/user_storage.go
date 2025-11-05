@@ -10,14 +10,14 @@ import (
 
 var ErrUsernameExists = errors.New("username already exists")
 
-func CreateUser(username, passwordHash string) error {
+func CreateUser(username, passwordHash string, profile models.UserProfile) error {
 	stmt, err := db.Prepare("INSERT INTO users(username, password_hash) VALUES(?, ?)")
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
-	_, err = stmt.Exec(username, passwordHash)
+	_, err = stmt.Exec(username, passwordHash, profile.Name, profile.Age, profile.Gender)
 	if err != nil {
 		var sqliteErr *sqlite.Error
 		if errors.As(err, &sqliteErr) {
@@ -34,9 +34,14 @@ func GetUserByUsername(username string) (models.User, error) {
 	var user models.User
 	var id int
 
-	row := db.QueryRow("SELECT id, username, password_hash FROM users WHERE username = ?", username)
+	row := db.QueryRow("SELECT id, username, password_hash, name, age, gender FROM users WHERE username = ?", username)
 
-	if err := row.Scan(&id, &user.Username, &user.PasswordHash); err != nil {
+	if err := row.Scan(
+		&id, &user.Username,
+		&user.PasswordHash,
+		&user.Profile.Name,
+		&user.Profile.Age,
+		&user.Profile.Gender); err != nil {
 		if err == sql.ErrNoRows {
 			return user, err // no selected user
 		}

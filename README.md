@@ -57,30 +57,30 @@ go run cmd/api/main.go
 
 ## **3\. 디렉토리 구조 (Directory Structure)**
 ```
-FishingSimulator\_SecurityProject/  
+FishingSimulator_SecurityProject/
 ├── cmd/api/  
-│   └── main.go               \# \[실행\] 서버 시작점, 라우터 설정  
+│   └── main.go                  [실행] 서버 시작점, 라우터 설정  
 ├── docs/  
 │   ├── docs.go
 │   ├── swagger.json
 │   └── swagger.yaml
 ├── internal/  
 │   ├── auth/  
-│   │   └── token.go          \# \[로직\] JWT 토큰 생성 및 검증  
+│   │   └── token.go              [로직] JWT 토큰 생성 및 검증  
 │   ├── handler/  
-│   │   ├── auth\_handler.go   \# \[핸들러\] /login, /signup HTTP 요청 처리  
-│   │   └── websocket\_handler.go \# \[핸들러\] /ws/simulation WebSocket 세션 관리  
+│   │   ├── auth_handler.go       [핸들러] /login, /signup HTTP 요청 처리  
+│   │   └── websocket_handler.go  [핸들러] /ws/simulation WebSocket 세션 관리  
 │   ├── middleware/  
-│   │   └── auth.go           \# \[미들웨어\] /api/\* 경로의 JWT 인증  
+│   │   └── auth.go               [미들웨어] /api/* 경로의 JWT 인증  
 │   ├── models/  
-│   │   └── user.go           \# \[모델\] User 구조체 정의  
+│   │   └── user.go               [모델] User 구조체 정의  
 │   └── simulation/  
-│       └── scenario.go       \# \[모델\] Scenario 구조체, 시나리오 데이터 정의  
+│       └── scenario.go           [모델] Scenario 구조체, 시나리오 데이터 정의  
 ├── testdata/  
-│   ├── received/             \# \[테스트\] C-\>S 오디오 덤프 저장소 (자동 생성)  
-│   └── response.mp3          \# \[테스트\] S-\>C 모의 응답 오디오 (수동 추가 필요)  
+│   ├── received/                 [테스트] C->S 오디오 덤프 저장소 (자동 생성)  
+│   └── response.mp3              [테스트] S->C 모의 응답 오디오 (수동 추가 필요)  
 ├── .gitignore  
 ├── go.mod  
 ├── go.sum  
-└── README.md                 \# (본 파일)  
+└── README.md                     (본 파일)  
 ```

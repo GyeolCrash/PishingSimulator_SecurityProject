@@ -1,25 +1,39 @@
+/*
+Name: 			auth_handler.go
+Description: 	Gin 프레임워크의 HTTP 핸들러
+Workflow: 		회원가입, 로그인, 프로필 조회
+*/
 package handler
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
+	"strings"
 
 	"PishingSimulator_SecurityProject/internal/auth"
+	"PishingSimulator_SecurityProject/internal/models"
 	"PishingSimulator_SecurityProject/internal/storage"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
 )
 
-// var users = make(map[string]models.User)
+/*
+// [테스트용 코드]
+var users = make(map[string]models.User)
+*/
 
+// /Signup 요청 바디
 type SignupRequest struct {
-	Username string `json:"username" example:"new_user"`
-	Password string `json:"password" example:"password123"`
+	Username string             `json:"username" example:"new_user"`
+	Password string             `json:"password" example:"password123"`
+	Profile  models.UserProfile `json:"profile"`
 }
 
+// /Login 요청 바디
 type LoginRequest struct {
 	Username string `json:"username" example:"my_user"`
 	Password string `json:"password" example:"password123"`
@@ -49,35 +63,50 @@ type LoginSuccessResponse struct {
 func Signup(c *gin.Context) {
 	var credentials SignupRequest
 
-	if err := c.ShouldBindJSON(&credentials); err != nil {
+	// sqlite 드라이버와 ShouldBindJSON의 호환성 문제로 인한 우회 코드
+	rawData, err := c.GetRawData()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return
+	}
+	if err := json.Unmarshal(rawData, &credentials); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
 	}
 
-	/*
-		if _, exist := users[credentials.Username]; exist {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Username already exists"})
-			return
-		} */
-
-	if credentials.Password == "" || credentials.Username == "" {
+	// " "으로 입력되는 케이스 방지
+	if strings.TrimSpace(credentials.Username) == "" || strings.TrimSpace(credentials.Password) == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Username and Password cannot be empty"})
 		return
 	}
+	if credentials.Profile.Age <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Age must be a positive number"})
+		return
+	}
 
+	// password 해싱
 	HashedPassword, err := bcrypt.GenerateFromPassword([]byte(credentials.Password), bcrypt.DefaultCost)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to hash password"})
 		return
 	}
 
-	/* 회원 정보 검증용, 메모리에 저장
-	users[credentials.Username] = models.User{
+	/*
+		// [테스트용 코드] 메모리 기반 중복 검사
+		users[credentials.Username] = models.User{
 		Username:     credentials.Username,
 		PasswordHash: string(HashedPassword),
-	} */
+		Profile:      credentials.Profile,
+		}
 
-	if err := storage.CreateUser(credentials.Username, string(HashedPassword)); err != nil {
+		if _, exist := users[credentials.Username]; exist {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Username already exists"})
+			return
+		}
+	*/
+
+	// DB에 사용자 생성
+	if err := storage.CreateUser(credentials.Username, string(HashedPassword), credentials.Profile); err != nil {
 		if errors.Is(err, storage.ErrUsernameExists) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Username already exists"})
 		} else {
@@ -106,8 +135,14 @@ func Signup(c *gin.Context) {
 func Login(c *gin.Context) {
 	var credentials LoginRequest
 
-	if err := c.ShouldBindJSON(&credentials); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+	rawData, err := c.GetRawData()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read request body"})
+		return
+	}
+	if err := json.Unmarshal(rawData, &credentials); err != nil {
+		log.Printf("[ERROR] Login: json.Unmarshal failed: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON parsing error: " + err.Error()})
 		return
 	}
 

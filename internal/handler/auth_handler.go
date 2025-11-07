@@ -1,8 +1,8 @@
-/*
-Name: 			auth_handler.go
-Description: 	Gin 프레임워크의 HTTP 핸들러
-Workflow: 		회원가입, 로그인, 프로필 조회
-*/
+/**
+* Name: 			auth_handler.go
+* Description: 		Gin 프레임워크의 HTTP 핸들러
+* Workflow: 		회원가입, 로그인, 프로필 조회
+ */
 package handler
 
 import (

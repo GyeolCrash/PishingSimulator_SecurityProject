@@ -1,21 +1,47 @@
 package handler
 
 import (
+	"PishingSimulator_SecurityProject/internal/llm"
 	"PishingSimulator_SecurityProject/internal/models"
 	"context"
 	"log"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
 
 func manageTextSession(conn *websocket.Conn, user models.User, parentCtx context.Context, scenarioKey string) {
 	defer conn.Close()
-	log.Printf("Text session started for user: %s", user.Username)
+	log.Printf("manageTextSession(): Text session started for user: %s, %s", user.Username, scenarioKey)
 
-	// llm.InitSession 호출 등 세션 초기화 로직 추가 가능
+	llmSessionID := uuid.New().String()
 
+	// 세션 종료 및 정리
+	defer func() {
+		log.Printf("manageTextSession(): Clearing session: %s", llmSessionID)
+		llm.ClearSession(llmSessionID)
+	}()
+
+	// LLM 세션 초기화
+	initialUtterance, err := llm.InitSession(llmSessionID, scenarioKey, user.Profile)
+	if err != nil {
+		log.Printf("manageTextSession(): LLM InitSession failed for user %s: %v", user.Username, err)
+		conn.WriteMessage(websocket.TextMessage, []byte("Error initializing session."))
+		return
+	}
+
+	// 초기 발화 전송
+	log.Printf("manageTextSession(): LLM initial utterance for user %s: %s", user.Username, initialUtterance)
+	if err := conn.WriteMessage(websocket.TextMessage, []byte(initialUtterance)); err != nil {
+		log.Printf("manageTextSession(): Error sending initial utterance to user %s: %v", user.Username, err)
+		return
+	}
+
+	// Half Duplex 대화 루프
 ReadLoop:
 	for {
+		// TODO: parentCtx.Done()을 감지하는 select { case... default... } + conn.SetReadDeadline()
+		// 패턴을 사용하면 더 견고하지만, 현재는 ReadMessage()의 블로킹을 사용합니다.
 		messageType, message, err := conn.ReadMessage()
 		if err != nil {
 			log.Printf("Error reading message from user %s: %v", user.Username, err)
@@ -23,12 +49,26 @@ ReadLoop:
 		}
 
 		if messageType != websocket.TextMessage {
+
 			log.Printf("Unsupported message type from user %s: %d", user.Username, messageType)
 			continue
 		} else {
-			log.Printf("Received text message from user %s: %s", user.Username, string(message))
-			// Todo: llm.Chat 호출 등 메시지 처리 로직 추가 가능
+			userText := string(message)
+			log.Printf("Received text message from user %s: %s", user.Username, userText)
 
+			// LLM에 API를 호출하고 응답을 받는다.
+			chatResp, err := llm.Chat(llmSessionID, userText)
+			if err != nil {
+				log.Printf("LLM Chat failed for user %s: %v", user.Username, err)
+				if err := conn.WriteMessage(websocket.TextMessage, []byte("Error processing your message.")); err != nil {
+					log.Printf("Error sending error message to user %s: %v", user.Username, err)
+					break ReadLoop
+				}
+				continue
+			}
+
+			// LLM 응답을 클라이언트에 전송한다.
+			log.Printf("LLM response for user %s: %s", user.Username, chatResp.Utterance)
 			if err := conn.WriteMessage(websocket.TextMessage, message); err != nil {
 				log.Printf("Error sending message to user %s: %v", user.Username, err)
 				break ReadLoop

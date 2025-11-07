@@ -123,15 +123,41 @@ func orchestrateAudioSession(user models.User, scenarioKey string, clientAudioIn
 
 	llmSessionID := uuid.New().String()
 	username := user.Username
-
 	log.Printf("orchestrateAudioSession(): started for user: %s, session: %s", username, llmSessionID)
 	defer close(serverAudioOutChannel)
 
+	// STT 스트리밍 인식기 생성
+	sttRecognizer, err := llm.NewStreamingRecognizer(ctx)
+	if err != nil {
+		log.Printf("orchestrateAudioSession(): Failed to create STT recognizer for user %s: %v", username, err)
+		return
+	}
+
+	ttsCleint, err := llm.NewTTSClient(ctx)
+	if err != nil {
+		log.Printf("orchestrateAudioSession(): Failed to create TTS client for user %s: %v", username, err)
+		// 이미 생성된 STT Recognizer 종료
+		sttRecognizer.Close()
+		return
+	}
+
+	// LLM 세션 종료 시 Recongizer, TTS 클라이언트 종료
 	defer func() {
 		log.Printf("orchestrateAudioSession(): Ending LLM session %s for user: %s", llmSessionID, username)
+
+		if err := sttRecognizer.Close(); err != nil {
+			log.Printf("orchestrateAudioSession(): Failed to close STT recognizer for user %s: %v", username, err)
+		}
+		if err := ttsCleint.Close(); err != nil {
+			log.Printf("orchestrateAudioSession(): Failed to close TTS client for user %s: %v", username, err)
+		}
+
+		log.Printf("orchestrateAudioSession(): LLM session %s ended for user: %s", llmSessionID, username)
 		llm.ClearSession(llmSessionID)
+		close(serverAudioOutChannel)
 	}()
 
+	// LLM 세션 초기화
 	initalUtterance, err := llm.InitSession(llmSessionID, scenarioKey, user.Profile)
 	if err != nil {
 		log.Printf("orchestrateAudioSession(): Failed to initialize LLM session for user %s: %v", username, err)
@@ -139,34 +165,58 @@ func orchestrateAudioSession(user models.User, scenarioKey string, clientAudioIn
 	}
 	log.Printf("orchestrateAudioSession(): LLM initial utterance for user %s: %s", username, initalUtterance)
 
-	if mockAudioResponse != nil {
-		serverAudioOutChannel <- mockAudioResponse
+	responseAudio, err := ttsCleint.ConvertTextToAudio(initalUtterance)
+	if err != nil {
+		log.Printf("orchestrateAudioSession(): TTS conversion failed for user %s: %v", username, err)
+		return
 	}
+	serverAudioOutChannel <- responseAudio
+
+	sttResultChannel := make(chan string, 10)
+	sttErrorChannel := make(chan error, 1)
+
+	go sttRecognizer.ReceiveTranslated(sttResultChannel, sttErrorChannel)
 
 	for {
 		select {
-		case <-ctx.Done():
+		case <-ctx.Done(): // 세션 취소 및 정리
 			log.Printf("orchestrateAudioSession(): Canceled with %s", username)
 			return
-		case audioData, ok := <-clientAudioInChannel:
+		case audioChunk, ok := <-clientAudioInChannel: // 클라이언트 오디오 수신
 			if !ok {
 				log.Printf("orchestrateAudioSession(): client audio in channel closed for user: %s", username)
 				return
 			}
 
-			// STT -> LLM -> TTS
+			// Todo: C->S 아카이빙 로직 추가
+			// handleReceiveAudio(audioChunk, username)
 
-			userText := handleReceiveAudio(audioData, username)
+			if err := sttRecognizer.SendAudio(audioChunk); err != nil {
+				log.Printf("orchestrateAudioSession(): STT send audio failed for user %s: %v", username, err)
+			}
+
+		case userText := <-sttResultChannel: // is final 텍스트 수신
+			log.Printf("orchestrateAudioSession(): STT [FINAL] %s with %s", userText, username)
 			chatResp, err := llm.Chat(llmSessionID, userText)
 			if err != nil {
 				log.Printf("orchestrateAudioSession(): LLM chat failed for user %s: %v", username, err)
 				continue
 			}
-			log.Printf("orchestrateAudioSession(): LLM response for user %s: %s", username, chatResp.Utterance)
 
-			if mockAudioResponse != nil {
-				serverAudioOutChannel <- mockAudioResponse
+			// Todo: S->C 아카이빙 로직 추가
+
+			log.Printf("orchestrateAudioSession(): LLM response for user %s: %s", username, chatResp.Utterance)
+			responseAudio, err := ttsCleint.ConvertTextToAudio(chatResp.Utterance)
+			if err != nil {
+				log.Printf("orchestrateAudioSession(): TTS conversion failed for user %s: %v", username, err)
+				continue
 			}
+
+			serverAudioOutChannel <- responseAudio
+
+		case err := <-sttErrorChannel: // 치명적 오류 수신
+			log.Printf("orchestrateAudioSession(): STT error for user %s: %v", username, err)
+			return
 		}
 	}
 }

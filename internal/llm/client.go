@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const llmBaseURL = "http://localhost:8000" // LLM 서버의 기본 URL
+const llmBaseURL = "http://localhost:8001" // LLM 서버의 기본 URL
 var httpClient = &http.Client{Timeout: 10 * time.Second}
 
 type InitRequest struct {
@@ -24,9 +24,10 @@ type InitResponse struct {
 	Utterance string `json:"utterance"`
 }
 
+// [수정] LLM 서버 API 명세에 맞게 JSON 태그를 추가합니다.
 type ChatRequest struct {
 	SessionID string `json:"session_id"`
-	Utterance string `json:"user_text"`
+	UserText  string `json:"user_text"`
 }
 
 type ChatResponse struct {
@@ -49,7 +50,7 @@ func InitSession(sessionID, scenarioKey string, userInfo models.UserProfile) (st
 		return "", err
 	}
 
-	resp, err := http.Post(llmBaseURL+"/init", "application/json", bytes.NewBuffer(reqBody))
+	resp, err := httpClient.Post(llmBaseURL+"/session/init", "application/json", bytes.NewBuffer(reqBody))
 	if err != nil {
 		return "", err
 	}
@@ -69,7 +70,7 @@ func InitSession(sessionID, scenarioKey string, userInfo models.UserProfile) (st
 func Chat(sessionID, text string) (*ChatResponse, error) {
 	reqBody, err := json.Marshal(ChatRequest{
 		SessionID: sessionID,
-		Utterance: text,
+		UserText:  text,
 	})
 	if err != nil {
 		return nil, err
@@ -90,12 +91,13 @@ func Chat(sessionID, text string) (*ChatResponse, error) {
 
 func ClearSession(sessionID string) error {
 	reqBody, err := json.Marshal(map[string]interface{}{
+		"session_id":    sessionID,
 		"clear_session": true,
 	})
 	if err != nil {
 		return err
 	}
-	resp, err := httpClient.Post(llmBaseURL+"/control", "application/json", bytes.NewBuffer(reqBody))
+	resp, err := httpClient.Post(llmBaseURL+"/session/control", "application/json", bytes.NewBuffer(reqBody))
 	if err != nil {
 		return err
 	}

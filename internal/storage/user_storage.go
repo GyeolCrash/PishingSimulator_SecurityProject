@@ -11,7 +11,7 @@ import (
 var ErrUsernameExists = errors.New("username already exists")
 
 func CreateUser(username, passwordHash string, profile models.UserProfile) error {
-	stmt, err := db.Prepare("INSERT INTO users(username, password_hash) VALUES(?, ?)")
+	stmt, err := db.Prepare("INSERT INTO users(username, password_hash, name, age, gender) VALUES(?, ?, ?, ?, ?)")
 	if err != nil {
 		return err
 	}
@@ -36,12 +36,16 @@ func GetUserByUsername(username string) (models.User, error) {
 
 	row := db.QueryRow("SELECT id, username, password_hash, name, age, gender FROM users WHERE username = ?", username)
 
+	var nullAge sql.NullInt64
+	var nullName, nullGender sql.NullString
+
 	if err := row.Scan(
 		&id, &user.Username,
 		&user.PasswordHash,
-		&user.Profile.Name,
-		&user.Profile.Age,
-		&user.Profile.Gender); err != nil {
+		&nullName,
+		&nullAge,
+		&nullGender,
+	); err != nil {
 		if err == sql.ErrNoRows {
 			return user, err // no selected user
 		}

@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket 오디오/인증 테스트 (v3)</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 20px; background-color: #f4f7f6; }
+        .container { max-width: 800px; margin: 0 auto; background: #fff; padding: 25px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        h2 { border-bottom: 2px solid #e0e0e0; padding-bottom: 10px; color: #333; }
+        .section { margin-bottom: 25px; }
+        input[type="text"], input[type="password"], input[type="number"], select {
+            width: calc(100% - 24px); padding: 12px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 8px; font-size: 16px;
+        }
+        button {
+            background-color: #007aff; color: white; padding: 12px 20px; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; margin-right: 10px;
+        }
+        button:hover { background-color: #0056b3; }
+        button:disabled { background-color: #aaa; }
+        #log {
+            background-color: #282c34; color: #abb2bf; padding: 15px; border-radius: 8px; height: 300px; overflow-y: scroll; font-family: 'Courier New', Courier, monospace; line-height: 1.5;
+        }
+        #log div { padding: 2px 0; }
+        .status { padding: 10px; border-radius: 8px; margin-top: 10px; }
+        .status-success { background-color: #e6f7ec; color: #2d6b46; }
+        .status-error { background-color: #fdecea; color: #a5302f; }
+        .dot { height: 12px; width: 12px; background-color: #bbb; border-radius: 50%; display: inline-block; margin-right: 8px; }
+        #recording-dot { background-color: #f44336; animation: blink 1s infinite; }
+        @keyframes blink { 50% { opacity: 0; } }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2>WebSocket 오디오/인증 테스트 (v3)</h2>
+
+        <!-- 0. 인증 섹션 (user_info 필드 추가) -->
+        <div class="section">
+            <h3>0. 인증 (Authentication)</h3>
+            <input type="text" id="username" placeholder="Username">
+            <input type="password" id="password" placeholder="Password">
+            <input type="text" id="name" placeholder="Name (예: 홍길동)">
+            <input type="number" id="age" placeholder="Age (예: 30)">
+            <input type="text" id="gender" placeholder="Gender (예: male)">
+            <button id="signupBtn">Sign Up (회원가입)</button>
+            <button id="loginBtn">Login (로그인)</button>
+            <div id="authStatus" class="status" style="display:none;"></div>
+        </div>
+
+        <!-- 1. 연결 설정 -->
+        <div class="section">
+            <h3>1. 연결 설정 (Connection)</h3>
+            <label for="jwt">JWT Token:</label>
+            <input type="text" id="jwt" placeholder="로그인 시 자동으로 채워집니다.">
+            
+            <label for="scenario">Scenario:</label>
+            <select id="scenario">
+                <option value="institution_impersonation">기관 사칭</option>
+                <option value="loan_scam">대출 사기</option>
+                <option value="friends_impersonation">지인 사칭</option>
+                <option value="delivery_notification">배송 알림 (테스트용)</option>
+            </select>
+            
+            <label for="mode">Mode:</label>
+            <select id="mode">
+                <option value="text">Text (텍스트)</option>
+                <option value="voice" selected>Voice (음성)</option> <!-- 음성 모드 기본 선택 -->
+            </select>
+            <br>
+            <button id="connectBtn">Connect</button>
+            <button id="disconnectBtn" disabled>Disconnect</button>
+        </div>
+
+        <!-- 2. 테스트 -->
+        <div class="section">
+            <h3>2. 테스트 (Test)</h3>
+            <!-- 텍스트 모드용 -->
+            <div id="text-controls" style="display:none;">
+                <input type="text" id="message" placeholder="Send Text Message">
+                <button id="sendTextBtn">Send Text</button>
+            </div>
+            
+            <!-- 음성 모드용 -->
+            <div id="voice-controls" style="display:none;">
+                <button id="startRecordingBtn">Start Recording (녹음 시작)</button>
+                <button id="stopRecordingBtn" disabled>Stop Recording (녹음 중지)</button>
+                <span id="recording-dot" class="dot" style="display:none;"></span>
+                <input type="checkbox" id="streamMode" checked>
+                <label for="streamMode">**실시간 스트리밍 모드 (필수)**</label>
+            </div>
+        </div>
+
+        <!-- 3. 로그 -->
+        <div class="section">
+            <h3>3. 로그 (Log)</h3>
+            <div id="log"></div>
+        </div>
+    </div>
+
+    <script>
+        // DOM 요소
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+        const nameInput = document.getElementById('name'); // [추가]
+        const ageInput = document.getElementById('age'); // [추가]
+        const genderInput = document.getElementById('gender'); // [추가]
+        const signupBtn = document.getElementById('signupBtn');
+        const loginBtn = document.getElementById('loginBtn');
+        const authStatus = document.getElementById('authStatus');
+        const jwtInput = document.getElementById('jwt');
+        const scenarioSelect = document.getElementById('scenario');
+        const modeSelect = document.getElementById('mode');
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const logEl = document.getElementById('log');
+
+        const textControls = document.getElementById('text-controls');
+        const messageInput = document.getElementById('message');
+        const sendTextBtn = document.getElementById('sendTextBtn');
+
+        const voiceControls = document.getElementById('voice-controls');
+        const startRecordingBtn = document.getElementById('startRecordingBtn');
+        const stopRecordingBtn = document.getElementById('stopRecordingBtn');
+        const recordingDot = document.getElementById('recording-dot');
+        const streamModeCheckbox = document.getElementById('streamMode');
+
+        let ws = null;
+        let mediaRecorder = null;
+        let audioChunks = [];
+
+        // --- 0. 인증 로직 ---
+
+        function setAuthStatus(message, isError = false) {
+            authStatus.textContent = message;
+            authStatus.className = isError ? 'status status-error' : 'status status-success';
+            authStatus.style.display = 'block';
+        }
+
+        // [수정] 회원가입 로직 (profile 객체 포함)
+        signupBtn.onclick = () => {
+            const body = JSON.stringify({
+                username: usernameInput.value,
+                password: passwordInput.value,
+                profile: {
+                    name: nameInput.value,
+                    age: parseInt(ageInput.value) || 0, // 숫자로 변환
+                    gender: genderInput.value
+                }
+            });
+
+            console.log("Sending to /signup. Body:", body);
+
+            fetch('http://localhost:8080/signup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: body
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    setAuthStatus(`Signup Error: ${data.error}`, true);
+                } else {
+                    setAuthStatus(`Signup Success: ${data.message}`, false);
+                }
+            })
+            .catch(err => {
+                setAuthStatus(`Fetch Error: ${err}`, true);
+                console.error("Signup Fetch Error:", err);
+            });
+        };
+
+        // 로그인 로직 (변경 없음)
+        loginBtn.onclick = () => {
+            const body = JSON.stringify({
+                username: usernameInput.value,
+                password: passwordInput.value
+            });
+
+            console.log("Sending to /login. Body:", body);
+
+            fetch('http://localhost:8080/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: body
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    setAuthStatus(`Login Error: ${data.error}`, true);
+                } else if (data.token) {
+                    setAuthStatus('Login Success! Token received.', false);
+                    jwtInput.value = data.token;
+                }
+            })
+            .catch(err => {
+                setAuthStatus(`Fetch Error: ${err}`, true);
+                console.error("Login Fetch Error:", err);
+            });
+        };
+
+        // --- 1. WebSocket 연결 로직 ---
+
+        function logMessage(message, type = 'info') {
+            const div = document.createElement('div');
+            let prefix = '';
+            if (type === 'sent') prefix = 'SENT 📤: ';
+            else if (type === 'received') prefix = 'RECV 📥: ';
+            else if (type === 'error') prefix = 'ERROR ❌: ';
+            
+            div.innerHTML = `<span style="color: ${type === 'error' ? '#ff6b6b' : '#888'};">${new Date().toLocaleTimeString()}</span> ${prefix}${message}`;
+            logEl.appendChild(div);
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        modeSelect.onchange = () => {
+            if (modeSelect.value === 'text') {
+                textControls.style.display = 'block';
+                voiceControls.style.display = 'none';
+            } else {
+                textControls.style.display = 'none';
+                voiceControls.style.display = 'block';
+            }
+        };
+        modeSelect.onchange(); // 초기 상태 설정
+
+        connectBtn.onclick = () => {
+            const token = jwtInput.value;
+            const scenario = scenarioSelect.value;
+            const mode = modeSelect.value;
+
+            if (!token) {
+                logMessage('JWT Token is required!', 'error');
+                return;
+            }
+
+            const url = `ws://localhost:8080/ws/simulation?token=${token}&scenario=${scenario}&mode=${mode}`;
+            logMessage(`Connecting to ${url}...`);
+
+            ws = new WebSocket(url);
+
+            ws.onopen = () => {
+                logMessage('Connected!', 'success');
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+            };
+
+            ws.onmessage = (event) => {
+                if (event.data instanceof Blob) {
+                    // [핵심] STT->Gemini->TTS를 거친 오디오 응답
+                    logMessage(`Received Binary Blob: ${event.data.size} bytes`, 'received');
+                    const audioUrl = URL.createObjectURL(event.data);
+                    const audio = new Audio(audioUrl);
+                    audio.play();
+                } else {
+                    // (초기 메시지 또는 텍스트 모드 응답)
+                    logMessage(event.data, 'received');
+                }
+            };
+
+            ws.onerror = (error) => {
+                logMessage('WebSocket Error. Check console (F12) for handshake failure details (e.g., 401, 400).', 'error');
+                console.error('WebSocket Error:', error);
+            };
+
+            ws.onclose = (event) => {
+                logMessage(`Disconnected. Code: ${event.code}, Reason: ${event.reason}`, 'info');
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+                ws = null;
+                if (mediaRecorder && mediaRecorder.state === "recording") {
+                    stopRecording();
+                }
+            };
+        };
+
+        disconnectBtn.onclick = () => {
+            if (ws) {
+                ws.close();
+            }
+        };
+
+        // --- 2. 텍스트 모드 ---
+        sendTextBtn.onclick = () => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                const message = messageInput.value;
+                ws.send(message);
+                logMessage(message, 'sent');
+                messageInput.value = '';
+            } else {
+                logMessage('Not connected.', 'error');
+            }
+        };
+        messageInput.onkeydown = (e) => {
+            if (e.key === 'Enter') sendTextBtn.onclick();
+        };
+
+        // --- 3. 음성 모드 (실시간 스트리밍) ---
+        
+        async function startRecording() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        // [중요] API 문서의 요구사항(16kHz)에 맞추기 위한 설정
+                        // 브라우저가 지원하지 않을 경우, 기본값으로 녹음됩니다.
+                        // 서버 STT가 16kHz만 받는다고 가정합니다.
+                        sampleRate: 16000, 
+                        channelCount: 1
+                    } 
+                });
+                
+                // [중요] 'audio/webm'이 아닌 'audio/opus'를 명시하여
+                // Linear16 PCM보다 훨씬 가벼운 Opus 코덱으로 전송합니다.
+                // Go 서버의 STT API는 Opus를 지원해야 합니다 (Google STT는 지원함).
+                mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm; codecs=opus' });
+                audioChunks = [];
+
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) {
+                        // [핵심] STT/Gemini 테스트는 "실시간 스트리밍" 모드여야 합니다.
+                        if (streamModeCheckbox.checked) {
+                            if (ws && ws.readyState === WebSocket.OPEN) {
+                                ws.send(event.data); // 청크를 즉시 전송
+                                logMessage(`Sent audio chunk: ${event.data.size} bytes`, 'sent');
+                            }
+                        } else {
+                            // (단일 파일 모드: 현재 테스트에서는 사용되지 않음)
+                            audioChunks.push(event.data);
+                        }
+                    }
+                };
+
+                mediaRecorder.onstop = () => {
+                    if (!streamModeCheckbox.checked) {
+                        // (단일 파일 모드: 현재 테스트에서는 사용되지 않음)
+                        if (ws && ws.readyState === WebSocket.OPEN) {
+                            const audioBlob = new Blob(audioChunks, { type: 'audio/webm; codecs=opus' });
+                            ws.send(audioBlob);
+//
+                            logMessage(`Sent single audio file: ${audioBlob.size} bytes`, 'sent');
+                        }
+                    }
+                    stream.getTracks().forEach(track => track.stop());
+                };
+
+                // '실시간' 모드일 때는 1초(1000ms) 간격으로 청크 생성
+                const timeslice = streamModeCheckbox.checked ? 1000 : undefined;
+                mediaRecorder.start(timeslice);
+
+                startRecordingBtn.disabled = true;
+                stopRecordingBtn.disabled = false;
+                recordingDot.style.display = 'inline-block';
+                logMessage('Recording started...', 'info');
+
+            } catch (err) {
+                logMessage('Error starting recording: ' + err.message, 'error');
+                console.error(err);
+            }
+        }
+
+        function stopRecording() {
+            if (mediaRecorder && mediaRecorder.state === "recording") {
+                mediaRecorder.stop();
+                startRecordingBtn.disabled = false;
+                stopRecordingBtn.disabled = true;
+                recordingDot.style.display = 'none';
+                logMessage('Recording stopped.', 'info');
+            }
+        }
+        
+        startRecordingBtn.onclick = startRecording;
+        stopRecordingBtn.onclick = stopRecording;
+
+    </script>
+</body>
+</html>

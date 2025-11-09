@@ -72,9 +72,8 @@ FishingSimulator_SecurityProject/
 │   │   └── websocket_handler.go  [핸들러] /ws/simulation WebSocket 세션 관리  
 │   ├── middleware/  
 │   │   └── auth.go               [미들웨어] /api/* 경로의 JWT 인증  
-│   ├── models/  
-│   │   └── user.go               [모델] User 구조체 정의  
-│   └── simulation/  
+│   └── models/  
+│       ├── user.go               [모델] User 구조체 정의  
 │       └── scenario.go           [모델] Scenario 구조체, 시나리오 데이터 정의  
 ├── testdata/  
 │   ├── received/                 [테스트] C->S 오디오 덤프 저장소 (자동 생성)  

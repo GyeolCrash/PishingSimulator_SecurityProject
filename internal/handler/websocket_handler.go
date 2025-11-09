@@ -2,7 +2,7 @@ package handler
 
 import (
 	"PishingSimulator_SecurityProject/internal/auth"
-	"PishingSimulator_SecurityProject/internal/simulation"
+	"PishingSimulator_SecurityProject/internal/models"
 	"PishingSimulator_SecurityProject/internal/storage"
 	"context"
 	"fmt"
@@ -54,7 +54,7 @@ func HandleSimulationConnection(c *gin.Context) {
 	log.Printf("User %s connected with scenario key: %s", username, scenarioKey)
 
 	// 시나리오와 모드 검증
-	scenario, exists := simulation.GetScenario(scenarioKey)
+	scenario, exists := models.GetScenario(scenarioKey)
 	if !exists {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid scenario key"})
 		return

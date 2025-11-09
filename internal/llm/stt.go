@@ -76,7 +76,7 @@ func (r *StreamingRecognizer) SendAudio(audioData []byte) error {
 }
 
 // gRPC 스트리밍 응답 수신
-func (r *StreamingRecognizer) ReceiveTranslated(resultChannel chan<- string, errChan chan<- error) {
+func (r *StreamingRecognizer) ReceiveTranslatedText(resultChannel chan<- string, errChan chan<- error) {
 	log.Printf("ReceiveResponses(): started")
 	for {
 		resp, err := r.stream.Recv()

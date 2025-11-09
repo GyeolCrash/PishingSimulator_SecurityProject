@@ -175,7 +175,7 @@ func orchestrateAudioSession(user models.User, scenarioKey string, clientAudioIn
 	sttResultChannel := make(chan string, 10)
 	sttErrorChannel := make(chan error, 1)
 
-	go sttRecognizer.ReceiveTranslated(sttResultChannel, sttErrorChannel)
+	go sttRecognizer.ReceiveTranslatedText(sttResultChannel, sttErrorChannel)
 
 	for {
 		select {

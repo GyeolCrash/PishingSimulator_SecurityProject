@@ -5,15 +5,27 @@ import (
 	"PishingSimulator_SecurityProject/internal/middleware"
 	"PishingSimulator_SecurityProject/internal/storage"
 	"log"
+	"os"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 
 	_ "PishingSimulator_SecurityProject/docs"
 
+	"github.com/joho/godotenv"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
+
+func init() {
+	err := godotenv.Load("../../.env")
+	if err != nil {
+		cwd, _ := os.Getwd()
+		log.Println("init(): Error Loading .env, CWD:", cwd, "Error:", err)
+	} else {
+		log.Println("init(): .env file loaded successfully")
+	}
+}
 
 // @title Phising Simulator API
 // @version 						0.1
@@ -24,7 +36,6 @@ import (
 // @in header
 // @name Authorization
 // @description Bearer 토큰 형식, Bearer {token}
-
 func main() {
 	storage.InitDB()
 	router := gin.Default()

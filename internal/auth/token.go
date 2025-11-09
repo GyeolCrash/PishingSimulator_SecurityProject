@@ -12,17 +12,13 @@ import (
 
 var jwtKey []byte
 
-// JWT 키 초기화
+// JWT 키 초기화, 런타임에 자동 호출
 func init() {
-	keyFromEnv := os.Getenv("JWT_SECRET_KEY")
-
-	// 환경 변수에서 키를 가져옴, 실패하면 기본 키 사용
-	// 실제 운영 환경에서는 반드시 안전한 키를 설정해야 함
-	if keyFromEnv != "" {
-		jwtKey = []byte(keyFromEnv)
-	} else {
-		jwtKey = []byte("my_secret_key")
-		log.Println("Warning: JWT secret key is not set. Using default key.")
+	jwtKey = []byte(os.Getenv("JWT_SECRET_KEY"))
+	log.Printf("JWT Key: %s", jwtKey)
+	if len(jwtKey) == 0 {
+		jwtKey = []byte("default_secret_key") // 기본 키 설정 (권장하지 않음)
+		log.Println("Warning: JWT_SECRET_KEY environment variable is not set. Using default key.")
 	}
 }
 

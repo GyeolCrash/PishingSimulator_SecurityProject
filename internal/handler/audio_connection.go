@@ -5,10 +5,8 @@ import (
 	"PishingSimulator_SecurityProject/internal/models"
 
 	"context"
-	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"sync"
 	"sync/atomic"
 
@@ -60,7 +58,8 @@ func manageAudioSession(conn *websocket.Conn, user models.User, parentCtx contex
 	go func() {
 		defer wg.Done()
 		defer cancel()
-		orchestrateAudioSession(user, scenarioKey, clientAudioInChannel, clientAudioOutChannel, ctx)
+		// orchestrateAudioSession(user, scenarioKey, clientAudioInChannel, clientAudioOutChannel, ctx)
+		orchestrateVoiceEchoTest(user, scenarioKey, clientAudioInChannel, clientAudioOutChannel, ctx)
 		//runBinaryEchoLogic(username, clientAudioInChannel, clientAudioOutChannel, ctx)
 	}()
 	wg.Wait()
@@ -221,6 +220,7 @@ func orchestrateAudioSession(user models.User, scenarioKey string, clientAudioIn
 	}
 }
 
+/*
 // 오디오 파일 저장
 func handleReceiveAudio(message []byte, username string) string {
 	count := audioFileCounter.Add(1)
@@ -233,9 +233,121 @@ func handleReceiveAudio(message []byte, username string) string {
 	}
 	return fmt.Sprintf("Received audio chunk %d (%d bytes)", count, len(message))
 }
+*/
+
+func orchestrateVoiceEchoTest(user models.User, scenarioKey string, clientAudioInChan <-chan []byte, serverAudioOutChan chan<- []byte, sessionContext context.Context) {
+
+	username := user.Username
+	log.Printf("orchestrateEchoTest(): [STT->TTS Echo Test Mode] started for user: %s", username)
+
+	defer close(serverAudioOutChan)
+
+	sttRecognizer, err := llm.NewStreamingRecognizer(sessionContext)
+	if err != nil { /* ... (에러 처리) ... */
+		return
+	}
+	defer sttRecognizer.Close()
+
+	ttsClient, err := llm.NewTTSClient(sessionContext)
+	if err != nil { /* ... (에러 처리) ... */
+		return
+	}
+	defer ttsClient.Close()
+
+	// [신규] 'isListening' 플래그로 상태(State) 관리
+	// true: LISTENING (오디오를 STT로 전송)
+	// false: RESPONDING (오디오를 무시/Discard - VAD 스팸 및 피드백 루프 방지)
+	isListening := true
+
+	// [신규] 'lastFinalText' - 중복된 'final' 결과 방지용
+	var lastFinalText string = ""
+
+	// ... (첫 인사말 전송을 위한 Goroutine - 동일)
+	go func() {
+		initialUtterance := "STT TTS 에코 테스트 모드입니다. 말씀하시면, 음성을 텍스트로 변환한 뒤, 다시 음성으로 변환하여 들려드립니다."
+		log.Printf("orchestrateEchoTest(): Sending initial test message...")
+		responseAudio, err := ttsClient.ConvertTextToAudio(initialUtterance)
+		if err == nil {
+			serverAudioOutChan <- responseAudio
+		} else {
+			log.Printf("orchestrateEchoTest(): Failed to convert initial TTS: %v", err)
+		}
+	}()
+
+	sttResultChan := make(chan string, 10)
+	sttErrChan := make(chan error, 1)
+
+	// STT 응답 수신을 위한 별도 Goroutine 시작
+	go sttRecognizer.ReceiveTranslatedText(sttResultChan, sttErrChan) // (ReceiveTranscribedText)
+
+	// 메인 처리 루프 (State Machine)
+	for {
+		select {
+		case <-sessionContext.Done():
+			log.Printf("orchestrateEchoTest(): Canceled with %s", username)
+			return
+
+		case audioChunk, ok := <-clientAudioInChan:
+			if !ok {
+				log.Printf("orchestrateEchoTest(): client audio in channel closed for user: %s", username)
+				return
+			}
+
+			// [수정] 'isListening' 상태일 때만 STT로 오디오 전송
+			if isListening {
+				if err := sttRecognizer.SendAudio(audioChunk); err != nil {
+					log.Printf("orchestrateEchoTest(): Failed to send audio to STT: %v", err)
+				}
+			} else {
+				// 'isListening = false' (RESPONDING 상태)
+				// 이 오디오 청크는 서버 자신의 에코(Echo)이거나,
+				// STT가 'final'을 보낸 후에도 계속 들어오는 '정적'이므로 무시(Discard)합니다.
+			}
+
+		case userText := <-sttResultChan:
+			// STT로부터 'is_final: true' 텍스트 수신
+
+			// [수정] STT가 동일한 'final' 텍스트를 중복으로 보내는지 확인
+			if userText == lastFinalText || userText == "" {
+				// log.Printf("orchestrateVoiceSession(): Discarding duplicate STT [FINAL] result: %s", userText)
+				continue // 중복이거나 빈 텍스트이므로 무시
+			}
+
+			log.Printf("orchestrateEchoTest(): STT [FINAL] -> %s", userText)
+			lastFinalText = userText // 'lastFinalText' 갱신
+
+			// [수정] 'isListening = false' (RESPONDING)로 즉시 상태 변경
+			isListening = false
+			log.Printf("... (State change: NOW RESPONDING. Discarding audio input)")
+
+			// [수정] TTS 변환 및 전송을 *별도 Goroutine*에서 처리하여
+			// 'select' 루프가 즉시 'audioChunk'를 계속 받을 수 있도록 함 (에코 무시)
+			go func(textToSpeak string) {
+				log.Printf("orchestrateEchoTest(): Calling TTS for: %s", textToSpeak)
+				responseAudio, err := ttsClient.ConvertTextToAudio(textToSpeak)
+				if err != nil {
+					log.Printf("orchestrateEchoTest(): Failed to convert chat TTS: %v", err)
+				} else {
+					// WritePump로 TTS 결과 오디오 전송
+					serverAudioOutChan <- responseAudio
+				}
+
+				// [수정] TTS 전송 완료 후, 다시 'LISTENING' 상태로 복귀
+				isListening = true
+				log.Printf("... (State change: NOW LISTENING)")
+
+			}(userText) // userText를 Goroutine에 인자로 전달
+
+		case err := <-sttErrChan:
+			log.Printf("orchestrateEchoTest(): STT stream error: %v", err)
+			return
+		}
+	}
+}
 
 // 오디오 에코, 저장
 // 제대로 동작하지 않는다면 handleReceiveAudio() 주석 처리
+/*
 func runBinaryEchoLogic(username string, clientAudioInChannel <-chan []byte, serverAudioOutChannel chan<- []byte, ctx context.Context) {
 	log.Printf("runBinaryEchoLogic(): started for user: %s", username)
 	defer close(serverAudioOutChannel)
@@ -260,3 +372,4 @@ func runBinaryEchoLogic(username string, clientAudioInChannel <-chan []byte, ser
 
 	}
 }
+*/

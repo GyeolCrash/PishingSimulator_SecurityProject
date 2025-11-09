@@ -44,12 +44,13 @@ func NewStreamingRecognizer(ctx context.Context) (*StreamingRecognizer, error) {
 
 	config := &speechpb.StreamingRecognitionConfig{
 		Config: &speechpb.RecognitionConfig{
-			Encoding:          speechpb.RecognitionConfig_LINEAR16,
+			Encoding:          speechpb.RecognitionConfig_WEBM_OPUS,
 			SampleRateHertz:   16000,
 			AudioChannelCount: 1,
 			LanguageCode:      "ko-KR",
 		},
-		InterimResults: true,
+		InterimResults:  true,
+		SingleUtterance: false,
 	}
 	if err := stream.Send(&speechpb.StreamingRecognizeRequest{
 		StreamingRequest: &speechpb.StreamingRecognizeRequest_StreamingConfig{
@@ -77,31 +78,31 @@ func (r *StreamingRecognizer) SendAudio(audioData []byte) error {
 
 // gRPC 스트리밍 응답 수신
 func (r *StreamingRecognizer) ReceiveTranslatedText(resultChannel chan<- string, errChan chan<- error) {
-	log.Printf("ReceiveResponses(): started")
+	log.Printf("ReceiveTranslatedText(): started")
 	for {
 		resp, err := r.stream.Recv()
 		if err == io.EOF {
-			log.Printf("ReceiveResponses(): stream closed by server")
+			log.Printf("ReceiveTranslatedText(): stream closed by server")
 			return
 		}
 		if err != nil {
-			log.Printf("ReceiveResponses(): error receiving response: %v", err)
+			log.Printf("ReceiveTranslatedText(): error receiving response: %v", err)
 			return
 		}
 
 		if err := resp.Error; err != nil {
-			log.Printf("ReceiveResponses(): received error from server: %v", err)
+			log.Printf("ReceiveTranslatedText(): received error from server: %v", err)
 			errChan <- errors.New(err.Message)
 			continue
 		}
 
 		for _, result := range resp.Results {
 			if result.IsFinal {
-				log.Printf("ReceiveResponses(): final result: %s", result.Alternatives[0].Transcript)
+				log.Printf("ReceiveTranslatedText(): final result: %s", result.Alternatives[0].Transcript)
 				resultChannel <- result.Alternatives[0].Transcript
 			} else {
-				log.Printf("ReceiveResponses(): interim result: %s", result.Alternatives[0].Transcript)
-				resultChannel <- result.Alternatives[0].Transcript
+				log.Printf("ReceiveTranslatedText(): interim result: %s", result.Alternatives[0].Transcript)
+				// resultChannel <- result.Alternatives[0].Transcript
 			}
 		}
 	}

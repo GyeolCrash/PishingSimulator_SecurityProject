@@ -404,4 +404,7 @@ FodyWeavers.xsd
 *.DS_Store
 *.idea/
 *.log
-*.db
+*p.db
+*testdata/
+.vscode/
+*temp_test/

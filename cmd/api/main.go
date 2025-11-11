@@ -5,10 +5,14 @@ import (
 	"PishingSimulator_SecurityProject/internal/middleware"
 	"PishingSimulator_SecurityProject/internal/storage"
 	"log"
+	"net/http"
 	"os"
+	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	limit "github.com/yangxikun/gin-limit-by-key"
+	"golang.org/x/time/rate"
 
 	_ "PishingSimulator_SecurityProject/docs"
 
@@ -46,9 +50,19 @@ func main() {
 	config.AllowHeaders = append(config.AllowHeaders, "Authorization")
 	router.Use(cors.New(config))
 
+	rateLimitMiddleware := limit.NewRateLimiter(func(c *gin.Context) string {
+		return c.ClientIP()
+	}, func(c *gin.Context) (*rate.Limiter, time.Duration) {
+		return rate.NewLimiter(rate.Every(time.Minute/100), 100), time.Hour
+	}, func(c *gin.Context) {
+		c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"error": "Too many requests"})
+	})
+
+	router.Use(rateLimitMiddleware)
+
 	// 라우트 설정
-	router.POST("/signup", handler.Signup)
-	router.POST("/login", handler.Login)
+	router.POST("/signup", rateLimitMiddleware, middleware.InviteCodeMiddleware(), handler.Signup)
+	router.POST("/login", rateLimitMiddleware, handler.Login)
 
 	// 보호된 라우트 그룹
 	protected := router.Group("/api").Use(middleware.AuthMiddleware())

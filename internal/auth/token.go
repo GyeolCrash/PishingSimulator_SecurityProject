@@ -55,6 +55,10 @@ func ValidateToken(tokenString string) (*Claims, error) {
 	claims := &Claims{}
 	// 토큰 파싱 및 검증
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		// alg: none 공격를 위한 서명 방법 검증
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, jwt.ErrTokenMalformed
+		}
 		return jwtKey, nil
 	})
 	if err != nil {

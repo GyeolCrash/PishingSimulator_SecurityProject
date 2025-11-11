@@ -12,7 +12,7 @@ var db *sql.DB
 func InitDB() {
 	var err error
 
-	db, err = sql.Open("sqlite", "./phising_simulator.db")
+	db, err = sql.Open("sqlite", "./pishing_simulator.db")
 	if err != nil {
 		log.Fatal("InitDB(): Failed to open databse :", err)
 	}

@@ -78,6 +78,8 @@ func HandleSimulationConnection(c *gin.Context) {
 		log.Printf("error: Failed to upgrade to WebSocket : User %s with %v", username, err)
 		return
 	}
+	conn.SetReadLimit(10485760) // DoS 방지용 최대 메시지 크기 제한, 10MB
+
 	defer conn.Close()
 	log.Printf("WebSocket connection established for user: %s", username)
 

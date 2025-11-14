@@ -61,7 +61,7 @@ func main() {
 	router.Use(rateLimitMiddleware)
 
 	// 라우트 설정
-	router.POST("/signup", rateLimitMiddleware, middleware.InviteCodeMiddleware(), handler.Signup)
+	router.POST("/signup", rateLimitMiddleware /*middleware.InviteCodeMiddleware(), */, handler.Signup)
 	router.POST("/login", rateLimitMiddleware, handler.Login)
 
 	// 보호된 라우트 그룹

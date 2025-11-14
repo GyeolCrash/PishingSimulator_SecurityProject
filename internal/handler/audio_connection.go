@@ -1,22 +1,21 @@
 package handler
 
 import (
-	"PishingSimulator_SecurityProject/internal/llm"
+	"PishingSimulator_SecurityProject/internal/archiver"
 	"PishingSimulator_SecurityProject/internal/models"
+	"PishingSimulator_SecurityProject/internal/storage"
+	"fmt"
+	"path/filepath"
+	"time"
 
 	"context"
 	"log"
 	"os"
 	"sync"
-	"sync/atomic"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
-
-// Counter for received audio files saved during testing
-var audioFileCounter atomic.Uint64
-var mockAudioResponse []byte
 
 const testAudioDir = "testdata/received_files"
 
@@ -32,43 +31,93 @@ func manageAudioSession(conn *websocket.Conn, user models.User, parentCtx contex
 	defer conn.Close()
 	log.Printf("Audio session started for user: %s", user.Username)
 
+	sessionID := uuid.New().String()
+
 	// context
 	ctx, cancel := context.WithCancel(parentCtx)
 	defer cancel()
 
+	sessionStartTime := time.Now()
+
 	// WaitGroup for goroutines
 	var wg sync.WaitGroup
-	wg.Add(3)
+	wg.Add(4)
 
-	clientAudioInChannel := make(chan []byte, 128)
-	clientAudioOutChannel := make(chan []byte, 128)
+	clientChan := make(chan []byte, 128)
+	serverChan := make(chan []byte, 128)
+	archiveC2SChan := make(chan []byte, 128)
+	archiveS2CChan := make(chan archiver.ArchiveS2CJob, 128)
 
+	archiver, err := archiver.NewArchiver(sessionID)
+	if err != nil {
+		log.Printf("manageAudioSession(): Failed to crate archiver: %v", err)
+		return
+	}
+	defer archiver.CloseBaseTrack()
+
+	// Client -> Server, 읽기 전담
 	go func() {
 		defer wg.Done()
 		defer cancel()
-		clientReadPump(conn, user.Username, clientAudioInChannel, ctx)
+		clientReadPump(conn, user.Username, clientChan, ctx)
+	}()
+
+	// Server -> Client, 쓰기 전담
+	go func() {
+		defer wg.Done()
+		defer cancel()
+		clientWritePump(conn, user.Username, serverChan, ctx)
+	}()
+
+	// STT/LLM/TTS
+	go func() {
+		defer wg.Done()
+		defer cancel()
+		// orchestrateAudioSession(user, scenarioKey, clientAudioInChan, clientAudioOutChan,
+		//	aC2SChan, aS2CChan, ctx)
+		orchestrateVoiceEchoTest(user, scenarioKey, sessionStartTime, clientChan, serverChan, archiveC2SChan,
+			archiveS2CChan, ctx)
 	}()
 
 	go func() {
 		defer wg.Done()
 		defer cancel()
-		clientWritePump(conn, user.Username, clientAudioOutChannel, ctx)
+		archiveAudioConversation(user.Username, archiver, archiveC2SChan, archiveS2CChan, ctx)
 	}()
 
-	go func() {
-		defer wg.Done()
-		defer cancel()
-		// orchestrateAudioSession(user, scenarioKey, clientAudioInChannel, clientAudioOutChannel, ctx)
-		orchestrateVoiceEchoTest(user, scenarioKey, clientAudioInChannel, clientAudioOutChannel, ctx)
-		//runBinaryEchoLogic(username, clientAudioInChannel, clientAudioOutChannel, ctx)
-	}()
 	wg.Wait()
+
+	/* 세션 종료 후 오디오 병합 */
+	log.Printf("Audio Session ended for user %s, Archiving audio files...", user.Username)
+
+	finalDir := filepath.Join("data", "recordings", user.Username)
+	if err := os.MkdirAll(finalDir, 0755); err != nil {
+		log.Printf("manageAudioSession(): Failed to create completed recording dir: %v", err)
+		return
+	}
+	finalFilePath := filepath.Join(finalDir, fmt.Sprintf("%s.mp3", sessionID))
+
+	if err := archiver.MergeAndSave(finalFilePath); err != nil {
+		log.Printf("manageAudioSession(): Failed to merge audio files: %v", err)
+		return
+	}
+
+	userID, err := storage.GetUserIDByUsername(user.Username)
+	if err != nil {
+		log.Printf("manageAudioSession(): Failed to get user ID for archiving: %v", err)
+		return
+	}
+
+	if err := storage.CreateRecording(userID, scenarioKey, finalFilePath); err != nil {
+		log.Printf("manageVoiceSession(): Failed to save recording to database: %v", err)
+	} else {
+		log.Printf("manageVoiceSession(): Successfully saved recording metadata to DB for user: %s, path: %s", user.Username, finalFilePath)
+	}
 }
 
-func clientReadPump(conn *websocket.Conn, username string, clientAudioInChannel chan<- []byte, ctx context.Context) {
+func clientReadPump(conn *websocket.Conn, username string, clientChan chan<- []byte, ctx context.Context) {
 	log.Printf("clientReadPump(): started for user: %s", username)
-	defer close(clientAudioInChannel)
-
+	defer close(clientChan)
 	for {
 		select {
 		case <-ctx.Done():
@@ -87,13 +136,13 @@ func clientReadPump(conn *websocket.Conn, username string, clientAudioInChannel 
 			continue
 		} else {
 			log.Printf("clientReadPump(): Received audio message from user %s: %d bytes", username, len(message))
-			clientAudioInChannel <- message
+			clientChan <- message
 		}
 
 	}
 }
 
-func clientWritePump(conn *websocket.Conn, username string, clientAudioOutChannel <-chan []byte, ctx context.Context) {
+func clientWritePump(conn *websocket.Conn, username string, clientAudioOutChan <-chan []byte, ctx context.Context) {
 	log.Printf("clientWritePump(): started for user: %s", username)
 	for {
 		select {
@@ -102,9 +151,9 @@ func clientWritePump(conn *websocket.Conn, username string, clientAudioOutChanne
 			conn.WriteMessage(websocket.CloseMessage, []byte{})
 			return
 
-		case audioData, ok := <-clientAudioOutChannel:
+		case audioData, ok := <-clientAudioOutChan:
 			if !ok {
-				log.Printf("clientWritePump(): audio out channel closed for user: %s", username)
+				log.Printf("clientWritePump(): audio out Chan closed for user: %s", username)
 				conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
@@ -117,259 +166,3 @@ func clientWritePump(conn *websocket.Conn, username string, clientAudioOutChanne
 		}
 	}
 }
-
-func orchestrateAudioSession(user models.User, scenarioKey string, clientAudioInChannel <-chan []byte, serverAudioOutChannel chan<- []byte, ctx context.Context) {
-
-	llmSessionID := uuid.New().String()
-	username := user.Username
-	log.Printf("orchestrateAudioSession(): started for user: %s, session: %s", username, llmSessionID)
-	defer close(serverAudioOutChannel)
-
-	// STT 스트리밍 인식기 생성
-	sttRecognizer, err := llm.NewStreamingRecognizer(ctx)
-	if err != nil {
-		log.Printf("orchestrateAudioSession(): Failed to create STT recognizer for user %s: %v", username, err)
-		return
-	}
-
-	ttsCleint, err := llm.NewTTSClient(ctx)
-	if err != nil {
-		log.Printf("orchestrateAudioSession(): Failed to create TTS client for user %s: %v", username, err)
-		// 이미 생성된 STT Recognizer 종료
-		sttRecognizer.Close()
-		return
-	}
-
-	// LLM 세션 종료 시 Recongizer, TTS 클라이언트 종료
-	defer func() {
-		log.Printf("orchestrateAudioSession(): Ending LLM session %s for user: %s", llmSessionID, username)
-
-		if err := sttRecognizer.Close(); err != nil {
-			log.Printf("orchestrateAudioSession(): Failed to close STT recognizer for user %s: %v", username, err)
-		}
-		if err := ttsCleint.Close(); err != nil {
-			log.Printf("orchestrateAudioSession(): Failed to close TTS client for user %s: %v", username, err)
-		}
-
-		log.Printf("orchestrateAudioSession(): LLM session %s ended for user: %s", llmSessionID, username)
-		llm.ClearSession(llmSessionID)
-		close(serverAudioOutChannel)
-	}()
-
-	// LLM 세션 초기화
-	initalUtterance, err := llm.InitSession(llmSessionID, scenarioKey, user.Profile)
-	if err != nil {
-		log.Printf("orchestrateAudioSession(): Failed to initialize LLM session for user %s: %v", username, err)
-		return
-	}
-	log.Printf("orchestrateAudioSession(): LLM initial utterance for user %s: %s", username, initalUtterance)
-
-	responseAudio, err := ttsCleint.ConvertTextToAudio(initalUtterance)
-	if err != nil {
-		log.Printf("orchestrateAudioSession(): TTS conversion failed for user %s: %v", username, err)
-		return
-	}
-	serverAudioOutChannel <- responseAudio
-
-	sttResultChannel := make(chan string, 10)
-	sttErrorChannel := make(chan error, 1)
-
-	go sttRecognizer.ReceiveTranslatedText(sttResultChannel, sttErrorChannel)
-
-	for {
-		select {
-		case <-ctx.Done(): // 세션 취소 및 정리
-			log.Printf("orchestrateAudioSession(): Canceled with %s", username)
-			return
-		case audioChunk, ok := <-clientAudioInChannel: // 클라이언트 오디오 수신
-			if !ok {
-				log.Printf("orchestrateAudioSession(): client audio in channel closed for user: %s", username)
-				return
-			}
-
-			// Todo: C->S 아카이빙 로직 추가
-			// handleReceiveAudio(audioChunk, username)
-
-			if err := sttRecognizer.SendAudio(audioChunk); err != nil {
-				log.Printf("orchestrateAudioSession(): STT send audio failed for user %s: %v", username, err)
-			}
-
-		case userText := <-sttResultChannel: // is final 텍스트 수신
-			log.Printf("orchestrateAudioSession(): STT [FINAL] %s with %s", userText, username)
-			chatResp, err := llm.Chat(llmSessionID, userText)
-			if err != nil {
-				log.Printf("orchestrateAudioSession(): LLM chat failed for user %s: %v", username, err)
-				continue
-			}
-
-			// Todo: S->C 아카이빙 로직 추가
-
-			log.Printf("orchestrateAudioSession(): LLM response for user %s: %s", username, chatResp.Utterance)
-			responseAudio, err := ttsCleint.ConvertTextToAudio(chatResp.Utterance)
-			if err != nil {
-				log.Printf("orchestrateAudioSession(): TTS conversion failed for user %s: %v", username, err)
-				continue
-			}
-
-			serverAudioOutChannel <- responseAudio
-
-		case err := <-sttErrorChannel: // 치명적 오류 수신
-			log.Printf("orchestrateAudioSession(): STT error for user %s: %v", username, err)
-			return
-		}
-	}
-}
-
-/*
-// 오디오 파일 저장
-func handleReceiveAudio(message []byte, username string) string {
-	count := audioFileCounter.Add(1)
-	fileName := fmt.Sprintf("%s_audio_%d.wav", username, count)
-	filePath := filepath.Join(testAudioDir, fileName)
-	if err := os.WriteFile(filePath, message, 0644); err != nil {
-		log.Printf("handleReceiveAudio(): Failed to save audio file for user %s: %v", username, err)
-	} else {
-		log.Printf("handleReceiveAudio(): Saved audio file for user %s: %s", username, filePath)
-	}
-	return fmt.Sprintf("Received audio chunk %d (%d bytes)", count, len(message))
-}
-*/
-
-func orchestrateVoiceEchoTest(user models.User, scenarioKey string, clientAudioInChan <-chan []byte, serverAudioOutChan chan<- []byte, sessionContext context.Context) {
-
-	username := user.Username
-	log.Printf("orchestrateEchoTest(): [STT->TTS Echo Test Mode] started for user: %s", username)
-
-	defer close(serverAudioOutChan)
-
-	sttRecognizer, err := llm.NewStreamingRecognizer(sessionContext)
-	if err != nil { /* ... (에러 처리) ... */
-		return
-	}
-	defer sttRecognizer.Close()
-
-	ttsClient, err := llm.NewTTSClient(sessionContext)
-	if err != nil { /* ... (에러 처리) ... */
-		return
-	}
-	defer ttsClient.Close()
-
-	// [신규] 'isListening' 플래그로 상태(State) 관리
-	// true: LISTENING (오디오를 STT로 전송)
-	// false: RESPONDING (오디오를 무시/Discard - VAD 스팸 및 피드백 루프 방지)
-	isListening := true
-
-	// [신규] 'lastFinalText' - 중복된 'final' 결과 방지용
-	var lastFinalText string = ""
-
-	// ... (첫 인사말 전송을 위한 Goroutine - 동일)
-	go func() {
-		initialUtterance := "STT TTS 에코 테스트 모드입니다. 말씀하시면, 음성을 텍스트로 변환한 뒤, 다시 음성으로 변환하여 들려드립니다."
-		log.Printf("orchestrateEchoTest(): Sending initial test message...")
-		responseAudio, err := ttsClient.ConvertTextToAudio(initialUtterance)
-		if err == nil {
-			serverAudioOutChan <- responseAudio
-		} else {
-			log.Printf("orchestrateEchoTest(): Failed to convert initial TTS: %v", err)
-		}
-	}()
-
-	sttResultChan := make(chan string, 10)
-	sttErrChan := make(chan error, 1)
-
-	// STT 응답 수신을 위한 별도 Goroutine 시작
-	go sttRecognizer.ReceiveTranslatedText(sttResultChan, sttErrChan) // (ReceiveTranscribedText)
-
-	// 메인 처리 루프 (State Machine)
-	for {
-		select {
-		case <-sessionContext.Done():
-			log.Printf("orchestrateEchoTest(): Canceled with %s", username)
-			return
-
-		case audioChunk, ok := <-clientAudioInChan:
-			if !ok {
-				log.Printf("orchestrateEchoTest(): client audio in channel closed for user: %s", username)
-				return
-			}
-
-			// [수정] 'isListening' 상태일 때만 STT로 오디오 전송
-			if isListening {
-				if err := sttRecognizer.SendAudio(audioChunk); err != nil {
-					log.Printf("orchestrateEchoTest(): Failed to send audio to STT: %v", err)
-				}
-			} else {
-				// 'isListening = false' (RESPONDING 상태)
-				// 이 오디오 청크는 서버 자신의 에코(Echo)이거나,
-				// STT가 'final'을 보낸 후에도 계속 들어오는 '정적'이므로 무시(Discard)합니다.
-			}
-
-		case userText := <-sttResultChan:
-			// STT로부터 'is_final: true' 텍스트 수신
-
-			// [수정] STT가 동일한 'final' 텍스트를 중복으로 보내는지 확인
-			if userText == lastFinalText || userText == "" {
-				// log.Printf("orchestrateVoiceSession(): Discarding duplicate STT [FINAL] result: %s", userText)
-				continue // 중복이거나 빈 텍스트이므로 무시
-			}
-
-			log.Printf("orchestrateEchoTest(): STT [FINAL] -> %s", userText)
-			lastFinalText = userText // 'lastFinalText' 갱신
-
-			// [수정] 'isListening = false' (RESPONDING)로 즉시 상태 변경
-			isListening = false
-			log.Printf("... (State change: NOW RESPONDING. Discarding audio input)")
-
-			// [수정] TTS 변환 및 전송을 *별도 Goroutine*에서 처리하여
-			// 'select' 루프가 즉시 'audioChunk'를 계속 받을 수 있도록 함 (에코 무시)
-			go func(textToSpeak string) {
-				log.Printf("orchestrateEchoTest(): Calling TTS for: %s", textToSpeak)
-				responseAudio, err := ttsClient.ConvertTextToAudio(textToSpeak)
-				if err != nil {
-					log.Printf("orchestrateEchoTest(): Failed to convert chat TTS: %v", err)
-				} else {
-					// WritePump로 TTS 결과 오디오 전송
-					serverAudioOutChan <- responseAudio
-				}
-
-				// [수정] TTS 전송 완료 후, 다시 'LISTENING' 상태로 복귀
-				isListening = true
-				log.Printf("... (State change: NOW LISTENING)")
-
-			}(userText) // userText를 Goroutine에 인자로 전달
-
-		case err := <-sttErrChan:
-			log.Printf("orchestrateEchoTest(): STT stream error: %v", err)
-			return
-		}
-	}
-}
-
-// 오디오 에코, 저장
-// 제대로 동작하지 않는다면 handleReceiveAudio() 주석 처리
-/*
-func runBinaryEchoLogic(username string, clientAudioInChannel <-chan []byte, serverAudioOutChannel chan<- []byte, ctx context.Context) {
-	log.Printf("runBinaryEchoLogic(): started for user: %s", username)
-	defer close(serverAudioOutChannel)
-
-	for {
-		select {
-		case <-ctx.Done():
-			log.Printf("runBinaryEchoLogic(): Canceled with %s", username)
-			return
-		case audioData, ok := <-clientAudioInChannel:
-			if !ok {
-				log.Printf("runBinaryEchoLogic(): client audio in channel closed for user: %s", username)
-				return
-			}
-			handleReceiveAudio(audioData, username)
-			if mockAudioResponse != nil {
-				serverAudioOutChannel <- mockAudioResponse
-			}
-			log.Printf("runBinaryEchoLogic(): Echoing audio data for user: %s, %d bytes", username, len(audioData))
-			serverAudioOutChannel <- audioData
-		}
-
-	}
-}
-*/

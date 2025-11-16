@@ -64,20 +64,33 @@ FishingSimulator_SecurityProject/
 │   ├── docs.go
 │   ├── swagger.json
 │   └── swagger.yaml
-├── internal/  
+├── internal/
+│   ├── archiver/
+│   │   └── archiver.go           [로직] 통화 기록 저장
 │   ├── auth/  
 │   │   └── token.go              [로직] JWT 토큰 생성 및 검증  
 │   ├── handler/  
-│   │   ├── auth_handler.go       [핸들러] /login, /signup HTTP 요청 처리  
-│   │   └── websocket_handler.go  [핸들러] /ws/simulation WebSocket 세션 관리  
+│   │   ├── audio_connection.go
+│   │   ├── audio_process.go
+│   │   ├── auth_handler.go
+│   │   ├── history.go
+│   │   ├── text_connection.go        
+│   │   └── websocket_handler.go  
+│   ├── llm/
+│   │   ├── client.go
+│   │   ├── stt.go 
+│   │   └── tts.go
 │   ├── middleware/  
 │   │   └── auth.go               [미들웨어] /api/* 경로의 JWT 인증  
-│   └── models/  
-│       ├── user.go               [모델] User 구조체 정의  
-│       └── scenario.go           [모델] Scenario 구조체, 시나리오 데이터 정의  
-├── testdata/  
-│   ├── received/                 [테스트] C->S 오디오 덤프 저장소 (자동 생성)  
-│   └── response.mp3              [테스트] S->C 모의 응답 오디오 (수동 추가 필요)  
+│   │   └── invite_code.go       
+│   ├── models/  
+│   │   ├── record.go 
+│   │   ├── scenario.go           [모델] Scenario 구조체, 시나리오 데이터 정의  
+│   │   └── user.go               [모델] User 구조체 정의
+│   └── storage/  
+│       ├── database.go 
+│       ├── record_storage.go           [모델] Scenario 구조체, 시나리오 데이터 정의  
+│       └── user_storage.go               [모델] User 구조체 정의
 ├── .gitignore  
 ├── go.mod  
 ├── go.sum  

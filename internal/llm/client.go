@@ -3,6 +3,7 @@ package llm
 import (
 	"PishingSimulator_SecurityProject/internal/models"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"log"
@@ -24,7 +25,6 @@ type InitResponse struct {
 	Utterance string `json:"utterance"`
 }
 
-// [수정] LLM 서버 API 명세에 맞게 JSON 태그를 추가합니다.
 type ChatRequest struct {
 	SessionID string `json:"session_id"`
 	UserText  string `json:"user_text"`
@@ -39,7 +39,7 @@ type ControlRequest struct {
 	ClearSession bool `json:"clear_session"`
 }
 
-func InitSession(sessionID, scenarioKey string, userInfo models.UserProfile) (string, error) {
+func InitSession(sessionID, scenarioKey string, userInfo models.UserProfile, ctx context.Context) (string, error) {
 	reqBody, err := json.Marshal(InitRequest{
 		SessionID:   sessionID,
 		Scenario:    scenarioKey,
@@ -50,7 +50,13 @@ func InitSession(sessionID, scenarioKey string, userInfo models.UserProfile) (st
 		return "", err
 	}
 
-	resp, err := httpClient.Post(llmBaseURL+"/session/init", "application/json", bytes.NewBuffer(reqBody))
+	req, err := http.NewRequestWithContext(ctx, "POST", llmBaseURL+"/session/init", bytes.NewBuffer(reqBody))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Context-Type", "application/json")
+
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -67,7 +73,7 @@ func InitSession(sessionID, scenarioKey string, userInfo models.UserProfile) (st
 	return initResp.Utterance, nil
 }
 
-func Chat(sessionID, text string) (*ChatResponse, error) {
+func Chat(sessionID, text string, ctx context.Context) (*ChatResponse, error) {
 	reqBody, err := json.Marshal(ChatRequest{
 		SessionID: sessionID,
 		UserText:  text,
@@ -76,7 +82,13 @@ func Chat(sessionID, text string) (*ChatResponse, error) {
 		return nil, err
 	}
 
-	resp, err := httpClient.Post(llmBaseURL+"/chat", "application/json", bytes.NewBuffer(reqBody))
+	req, err := http.NewRequestWithContext(ctx, "POST", llmBaseURL+"/chat", bytes.NewBuffer(reqBody))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Context-Type", "application/json")
+
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -85,6 +97,10 @@ func Chat(sessionID, text string) (*ChatResponse, error) {
 	var chatResp ChatResponse
 	if resp.StatusCode != http.StatusOK {
 		return nil, errors.New("LLM Server chat failed with status: " + resp.Status)
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
+		return nil, err
 	}
 	return &chatResp, nil
 }

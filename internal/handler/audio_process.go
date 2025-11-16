@@ -14,111 +14,181 @@ import (
 	"github.com/google/uuid"
 )
 
-func orchestrateAudioSession(user models.User, scenarioKey string, clientChannel <-chan []byte, serverChannel chan<- []byte, ctx context.Context) {
-
-	llmSessionID := uuid.New().String()
+func orchestrateAudioSession(
+	user models.User,
+	scenarioKey string, // [추가] 시나리오 키
+	sessionStartTime time.Time,
+	clientChan <-chan []byte,
+	serverChan chan<- []byte,
+	archiveC2SChan chan<- []byte,
+	archiveS2CChan chan<- archiver.ArchiveS2CJob,
+	parentCtx context.Context,
+) {
 	username := user.Username
+	llmSessionID := uuid.New().String() // [추가] LLM 세션 ID 생성
 	log.Printf("orchestrateAudioSession(): started for user: %s, session: %s", username, llmSessionID)
-	defer close(serverChannel)
 
-	// STT 스트리밍 인식기 생성
-	sttRecognizer, err := llm.NewStreamingRecognizer(ctx)
+	// 채널 정리
+	defer close(serverChan)
+	defer close(archiveC2SChan)
+	defer close(archiveS2CChan)
+
+	// 1. STT & TTS 클라이언트 생성
+	sttRecognizer, err := llm.NewStreamingRecognizer(parentCtx)
 	if err != nil {
-		log.Printf("orchestrateAudioSession(): Failed to create STT recognizer for user %s: %v", username, err)
+		log.Printf("orchestrateAudioSession(): Failed to create STT: %v", err)
 		return
 	}
 
-	ttsCleint, err := llm.NewTTSClient(ctx)
+	ttsClient, err := llm.NewTTSClient(parentCtx)
 	if err != nil {
-		log.Printf("orchestrateAudioSession(): Failed to create TTS client for user %s: %v", username, err)
-		// 이미 생성된 STT Recognizer 종료
-		sttRecognizer.Close()
+		log.Printf("orchestrateAudioSession(): Failed to create TTS: %v", err)
+		sttRecognizer.Close() // TTS 실패 시 STT도 닫고 종료
 		return
 	}
 
-	// LLM 세션 종료 시 Recongizer, TTS 클라이언트 종료
+	// 2. 리소스 정리 (defer)
 	defer func() {
-		log.Printf("orchestrateAudioSession(): Ending LLM session %s for user: %s", llmSessionID, username)
-
+		log.Printf("orchestrateAudioSession(): Cleaning up resources for %s", username)
 		if err := sttRecognizer.Close(); err != nil {
-			log.Printf("orchestrateAudioSession(): Failed to close STT recognizer for user %s: %v", username, err)
+			log.Printf("orchestrateAudioSession(): Error closing STT: %v", err)
 		}
-		if err := ttsCleint.Close(); err != nil {
-			log.Printf("orchestrateAudioSession(): Failed to close TTS client for user %s: %v", username, err)
+		if err := ttsClient.Close(); err != nil {
+			log.Printf("orchestrateAudioSession(): Error closing TTS: %v", err)
 		}
-
-		log.Printf("orchestrateAudioSession(): LLM session %s ended for user: %s", llmSessionID, username)
+		// [추가] LLM 세션 정리 요청
 		llm.ClearSession(llmSessionID)
-		close(serverChannel)
 	}()
 
-	// LLM 세션 초기화
-	initalUtterance, err := llm.InitSession(llmSessionID, scenarioKey, user.Profile)
-	if err != nil {
-		log.Printf("orchestrateAudioSession(): Failed to initialize LLM session for user %s: %v", username, err)
-		return
-	}
-	log.Printf("orchestrateAudioSession(): LLM initial utterance for user %s: %s", username, initalUtterance)
+	// 상태 관리 (말하는 중에는 듣지 않음 - Half Duplex 유사 동작)
+	var isListening = true
+	var stateMutex sync.Mutex
+	var lastFinalText string = ""
 
-	responseAudio, err := ttsCleint.ConvertTextToAudio(initalUtterance)
-	if err != nil {
-		log.Printf("orchestrateAudioSession(): TTS conversion failed for user %s: %v", username, err)
-		return
-	}
-	serverChannel <- responseAudio
+	// 3. 초기 인사말 처리 (LLM InitSession)
+	go func() {
+		// [변경] 하드코딩된 텍스트 대신 LLM 서버에 초기화 요청
+		log.Printf("orchestrateAudioSession(): Initializing LLM session...")
+		initialUtterance, err := llm.InitSession(llmSessionID, scenarioKey, user.Profile, parentCtx)
+		if err != nil {
+			log.Printf("orchestrateAudioSession(): Failed to init LLM session: %v", err)
+			return
+		}
 
-	sttResultChannel := make(chan string, 10)
-	sttErrorChannel := make(chan error, 1)
+		log.Printf("orchestrateAudioSession(): LLM Init -> %s", initialUtterance)
 
-	go sttRecognizer.ReceiveTranslatedText(sttResultChannel, sttErrorChannel)
+		// TTS 변환 및 전송
+		responseAudio, err := ttsClient.ConvertTextToAudio(initialUtterance)
+		if err == nil {
+			startTime := time.Since(sessionStartTime)
+			archiveS2CChan <- archiver.ArchiveS2CJob{Data: responseAudio, StartTime: startTime}
+			serverChan <- responseAudio
+		} else {
+			log.Printf("orchestrateAudioSession(): Failed to convert initial TTS: %v", err)
+		}
+	}()
 
+	sttResultChan := make(chan string, 10)
+	sttErrChan := make(chan error, 1)
+
+	// STT 수신 고루틴 시작
+	go sttRecognizer.ReceiveTranslatedText(sttResultChan, sttErrChan)
+
+	// 4. 메인 루프
 	for {
 		select {
-		case <-ctx.Done(): // 세션 취소 및 정리
-			log.Printf("orchestrateAudioSession(): Canceled with %s", username)
+		case <-parentCtx.Done():
+			log.Printf("orchestrateAudioSession(): Context Canceled with %s", username)
 			return
-		case audioChunk, ok := <-clientChannel: // 클라이언트 오디오 수신
+
+		// [오디오 수신] Client -> Server
+		case audioChunk, ok := <-clientChan:
 			if !ok {
-				log.Printf("orchestrateAudioSession(): client audio in channel closed for user: %s", username)
+				log.Printf("orchestrateAudioSession(): Client audio channel closed for: %s", username)
 				return
 			}
 
-			// Todo: C->S 아카이빙 로직 추가
-			// handleReceiveAudio(audioChunk, username)
+			// 무조건 아카이빙
+			archiveC2SChan <- audioChunk
 
-			if err := sttRecognizer.SendAudio(audioChunk); err != nil {
-				log.Printf("orchestrateAudioSession(): STT send audio failed for user %s: %v", username, err)
+			// 상태에 따라 STT 전송 여부 결정
+			stateMutex.Lock()
+			currentListeningState := isListening
+			stateMutex.Unlock()
+
+			if currentListeningState {
+				if err := sttRecognizer.SendAudio(audioChunk); err != nil {
+					log.Printf("Failed to send audio to STT: %v", err)
+				}
 			}
 
-		case userText := <-sttResultChannel: // is final 텍스트 수신
-			log.Printf("orchestrateAudioSession(): STT [FINAL] %s with %s", userText, username)
-			chatResp, err := llm.Chat(llmSessionID, userText)
-			if err != nil {
-				log.Printf("orchestrateAudioSession(): LLM chat failed for user %s: %v", username, err)
+		// [텍스트 수신] STT -> Logic
+		case userText := <-sttResultChan:
+			sttFinalTime := time.Since(sessionStartTime)
+			cleanedText := strings.TrimSpace(userText)
+
+			stateMutex.Lock()
+			// 듣기 모드가 아니거나, 빈 텍스트거나, 중복된 텍스트면 무시
+			if !isListening || cleanedText == "" || cleanedText == lastFinalText {
+				stateMutex.Unlock()
 				continue
 			}
 
-			// Todo: S->C 아카이빙 로직 추가
+			// 유효한 입력이 들어오면 즉시 듣기 중단 (AI가 답변 준비)
+			isListening = false
+			lastFinalText = userText
+			stateMutex.Unlock()
 
-			log.Printf("orchestrateAudioSession(): LLM response for user %s: %s", username, chatResp.Utterance)
-			responseAudio, err := ttsCleint.ConvertTextToAudio(chatResp.Utterance)
-			if err != nil {
-				log.Printf("orchestrateAudioSession(): TTS conversion failed for user %s: %v", username, err)
-				continue
-			}
+			log.Printf("orchestrateAudioSession(): STT [FINAL] -> %s", userText)
 
-			serverChannel <- responseAudio
+			// [변경] 별도 고루틴에서 LLM 호출 -> TTS -> 전송 수행
+			go func(textInput string, sttTimestamp time.Duration) {
+				// A. LLM Chat 호출
+				log.Printf("orchestrateAudioSession(): Calling LLM for: %s", textInput)
+				chatResp, err := llm.Chat(llmSessionID, textInput, parentCtx)
 
-		case err := <-sttErrorChannel: // 치명적 오류 수신
-			log.Printf("orchestrateAudioSession(): STT error for user %s: %v", username, err)
+				if err != nil {
+					log.Printf("orchestrateAudioSession(): LLM Chat Error: %v", err)
+					// 에러 발생 시 다시 듣기 모드로 복구해야 함
+					stateMutex.Lock()
+					isListening = true
+					stateMutex.Unlock()
+					return
+				}
+
+				aiText := chatResp.Utterance
+				log.Printf("orchestrateAudioSession(): LLM Response -> %s", aiText)
+
+				// B. TTS 변환
+				responseAudio, err := ttsClient.ConvertTextToAudio(aiText)
+				if err != nil {
+					log.Printf("orchestrateAudioSession(): TTS Error: %v", err)
+				} else {
+					// C. 전송 및 아카이빙
+					archiveS2CChan <- archiver.ArchiveS2CJob{Data: responseAudio, StartTime: sttTimestamp}
+					serverChan <- responseAudio
+				}
+
+				// D. 처리 완료 후 다시 듣기 모드 활성화
+				stateMutex.Lock()
+				isListening = true
+				log.Printf("... (State change: NOW LISTENING)")
+				stateMutex.Unlock()
+
+			}(cleanedText, sttFinalTime)
+
+		case err := <-sttErrChan:
+			log.Printf("orchestrateAudioSession(): STT stream error: %v", err)
 			return
 		}
 	}
 }
 
-func orchestrateVoiceEchoTest(user models.User, scenarioKey string, sessionStartTime time.Time,
+// 테스트용 함수
+/*
+func orchestrateVoiceEchoTest(user models.User, sessionStartTime time.Time,
 	clientChan <-chan []byte, serverChan chan<- []byte, archiveC2SChan chan<- []byte,
-	archiveS2CChan chan<- archiver.ArchiveS2CJob, sessionContext context.Context) {
+	archiveS2CChan chan<- archiver.ArchiveS2CJob, parentCtx context.Context) {
 
 	username := user.Username
 	log.Printf("orchestrateVoiceSession(): [STT->TTS Echo Test Mode] started for user: %s", username)
@@ -128,13 +198,13 @@ func orchestrateVoiceEchoTest(user models.User, scenarioKey string, sessionStart
 	defer close(archiveC2SChan)
 	defer close(archiveS2CChan)
 
-	sttRecognizer, err := llm.NewStreamingRecognizer(sessionContext)
-	if err != nil { /* ... (에러 처리) ... */
+	sttRecognizer, err := llm.NewStreamingRecognizer(parentCtx)
+	if err != nil {
 		return
 	}
 
-	ttsClient, err := llm.NewTTSClient(sessionContext)
-	if err != nil { /* ... (에러 처리) ... */
+	ttsClient, err := llm.NewTTSClient(parentCtx)
+	if err != nil {
 		return
 	}
 
@@ -176,7 +246,7 @@ func orchestrateVoiceEchoTest(user models.User, scenarioKey string, sessionStart
 	// 메인 처리 루프 (State Machine)
 	for {
 		select {
-		case <-sessionContext.Done():
+		case <-parentCtx.Done():
 			log.Printf("orchestrateVoiceSession(): Canceled with %s", username)
 			return
 
@@ -238,6 +308,8 @@ func orchestrateVoiceEchoTest(user models.User, scenarioKey string, sessionStart
 		}
 	}
 }
+
+*/
 
 func archiveAudioConversation(username string, archiver *archiver.Archiver, c2sIn <-chan []byte,
 	s2cIn <-chan archiver.ArchiveS2CJob, ctx context.Context) {

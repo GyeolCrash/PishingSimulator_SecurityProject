@@ -73,10 +73,18 @@ func manageAudioSession(conn *websocket.Conn, user models.User, parentCtx contex
 	go func() {
 		defer wg.Done()
 		defer cancel()
-		// orchestrateAudioSession(user, scenarioKey, clientAudioInChan, clientAudioOutChan,
-		//	aC2SChan, aS2CChan, ctx)
-		orchestrateVoiceEchoTest(user, scenarioKey, sessionStartTime, clientChan, serverChan, archiveC2SChan,
-			archiveS2CChan, ctx)
+		orchestrateAudioSession(
+			user,
+			scenarioKey,
+			sessionStartTime,
+			clientChan,
+			serverChan,
+			archiveC2SChan,
+			archiveS2CChan,
+			ctx,
+		)
+		//orchestrateVoiceEchoTest(user, sessionStartTime, clientChan, serverChan, archiveC2SChan,
+		//	archiveS2CChan, ctx)
 	}()
 
 	go func() {
@@ -90,9 +98,9 @@ func manageAudioSession(conn *websocket.Conn, user models.User, parentCtx contex
 	/* 세션 종료 후 오디오 병합 */
 	log.Printf("Audio Session ended for user %s, Archiving audio files...", user.Username)
 
-	finalDir := filepath.Join("data", "recordings", user.Username)
+	finalDir := filepath.Join("data", "Records", user.Username)
 	if err := os.MkdirAll(finalDir, 0755); err != nil {
-		log.Printf("manageAudioSession(): Failed to create completed recording dir: %v", err)
+		log.Printf("manageAudioSession(): Failed to create completed Record dir: %v", err)
 		return
 	}
 	finalFilePath := filepath.Join(finalDir, fmt.Sprintf("%s.mp3", sessionID))
@@ -108,10 +116,10 @@ func manageAudioSession(conn *websocket.Conn, user models.User, parentCtx contex
 		return
 	}
 
-	if err := storage.CreateRecording(userID, scenarioKey, finalFilePath); err != nil {
-		log.Printf("manageVoiceSession(): Failed to save recording to database: %v", err)
+	if err := storage.CreateRecords(userID, scenarioKey, finalFilePath); err != nil {
+		log.Printf("manageVoiceSession(): Failed to save Record to database: %v", err)
 	} else {
-		log.Printf("manageVoiceSession(): Successfully saved recording metadata to DB for user: %s, path: %s", user.Username, finalFilePath)
+		log.Printf("manageVoiceSession(): Successfully saved Record metadata to DB for user: %s, path: %s", user.Username, finalFilePath)
 	}
 }
 
@@ -135,7 +143,7 @@ func clientReadPump(conn *websocket.Conn, username string, clientChan chan<- []b
 			log.Printf("clientReadPump(): Unsupported message type from user %s: %d", username, messageType)
 			continue
 		} else {
-			log.Printf("clientReadPump(): Received audio message from user %s: %d bytes", username, len(message))
+			// log.Printf("clientReadPump(): Received audio message from user %s: %d bytes", username, len(message))
 			clientChan <- message
 		}
 

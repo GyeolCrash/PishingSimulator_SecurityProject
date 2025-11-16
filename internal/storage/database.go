@@ -29,8 +29,8 @@ func InitDB() {
 			"age" INTEGER,
 			"gender" TEXT
 	);`
-	createRecordingsTable := `
-	CREATE TABLE IF NOT EXISTS recordings (
+	createRecordsTable := `
+	CREATE TABLE IF NOT EXISTS Records (
 			"id" INTEGER PRIMARY KEY AUTOINCREMENT,
 			"user_id" INTEGER NOT NULL,
 			"scenario_key" TEXT,
@@ -42,7 +42,7 @@ func InitDB() {
 	if _, err := db.Exec(createUsersTable); err != nil {
 		log.Fatalf("InitDB(): Failed to create users table: %v", err)
 	}
-	if _, err := db.Exec(createRecordingsTable); err != nil {
+	if _, err := db.Exec(createRecordsTable); err != nil {
 		log.Fatalf("InitDB(): Failed to create recrodings table: %v", err)
 	}
 	log.Println("InitDB(): Init and create table successfully!")

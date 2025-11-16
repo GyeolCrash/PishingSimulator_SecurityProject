@@ -52,6 +52,16 @@ func GetUserByUsername(username string) (models.User, error) {
 		return user, err // unexpected error
 	}
 
+	if nullName.Valid {
+		user.Profile.Name = nullName.String
+	}
+	if nullAge.Valid {
+		user.Profile.Age = int(nullAge.Int64)
+	}
+	if nullGender.Valid {
+		user.Profile.Gender = nullGender.String
+	}
+
 	return user, nil
 }
 

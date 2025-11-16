@@ -68,6 +68,8 @@ func main() {
 	protected := router.Group("/api").Use(middleware.AuthMiddleware())
 	{
 		protected.GET("/profile", handler.Profile)
+		protected.GET("history", handler.GetCallHistory)
+		protected.GET("/audio/:filename", handler.StreamAudio)
 	}
 
 	// WebSocket 핸들러

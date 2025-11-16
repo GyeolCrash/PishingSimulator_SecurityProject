@@ -90,21 +90,6 @@ func Signup(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to hash password"})
 		return
 	}
-
-	/*
-		// [테스트용 코드] 메모리 기반 중복 검사
-		users[credentials.Username] = models.User{
-		Username:     credentials.Username,
-		PasswordHash: string(HashedPassword),
-		Profile:      credentials.Profile,
-		}
-
-		if _, exist := users[credentials.Username]; exist {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Username already exists"})
-			return
-		}
-	*/
-
 	// DB에 사용자 생성
 	if err := storage.CreateUser(credentials.Username, string(HashedPassword), credentials.Profile); err != nil {
 		if errors.Is(err, storage.ErrUsernameExists) {
@@ -145,24 +130,6 @@ func Login(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON parsing error: " + err.Error()})
 		return
 	}
-
-	/*
-		if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(credentials.Password)); err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
-			return
-		}
-		user, exist := users[credentials.Username]
-		if !exist {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
-			return
-		}
-
-		tokenString, err := auth.GenerateToken(credentials.Username)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
-			return
-		}
-	*/
 
 	if credentials.Username == "" || credentials.Password == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})

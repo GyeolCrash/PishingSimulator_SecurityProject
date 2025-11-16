@@ -406,7 +406,7 @@ FodyWeavers.xsd
 *.log
 *p.db
 data/
-testdata/
 .vscode/
 temp_test/*
 *.mp3
+*.db

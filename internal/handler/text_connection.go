@@ -23,7 +23,7 @@ func manageTextSession(conn *websocket.Conn, user models.User, parentCtx context
 	}()
 
 	// LLM 세션 초기화
-	initialUtterance, err := llm.InitSession(llmSessionID, scenarioKey, user.Profile)
+	initialUtterance, err := llm.InitSession(llmSessionID, scenarioKey, user.Profile, parentCtx)
 	if err != nil {
 		log.Printf("manageTextSession(): LLM InitSession failed for user %s: %v", user.Username, err)
 		conn.WriteMessage(websocket.TextMessage, []byte("Error initializing session."))
@@ -40,8 +40,6 @@ func manageTextSession(conn *websocket.Conn, user models.User, parentCtx context
 	// Half Duplex 대화 루프
 ReadLoop:
 	for {
-		// TODO: parentCtx.Done()을 감지하는 select { case... default... } + conn.SetReadDeadline()
-		// 패턴을 사용하면 더 견고하지만, 현재는 ReadMessage()의 블로킹을 사용합니다.
 		messageType, message, err := conn.ReadMessage()
 		if err != nil {
 			log.Printf("Error reading message from user %s: %v", user.Username, err)
@@ -49,7 +47,6 @@ ReadLoop:
 		}
 
 		if messageType != websocket.TextMessage {
-
 			log.Printf("Unsupported message type from user %s: %d", user.Username, messageType)
 			continue
 		} else {
@@ -57,7 +54,7 @@ ReadLoop:
 			log.Printf("Received text message from user %s: %s", user.Username, userText)
 
 			// LLM에 API를 호출하고 응답을 받는다.
-			chatResp, err := llm.Chat(llmSessionID, userText)
+			chatResp, err := llm.Chat(llmSessionID, userText, parentCtx)
 			if err != nil {
 				log.Printf("LLM Chat failed for user %s: %v", user.Username, err)
 				if err := conn.WriteMessage(websocket.TextMessage, []byte("Error processing your message.")); err != nil {
@@ -69,7 +66,7 @@ ReadLoop:
 
 			// LLM 응답을 클라이언트에 전송한다.
 			log.Printf("LLM response for user %s: %s", user.Username, chatResp.Utterance)
-			if err := conn.WriteMessage(websocket.TextMessage, message); err != nil {
+			if err := conn.WriteMessage(websocket.TextMessage, []byte(chatResp.Utterance)); err != nil {
 				log.Printf("Error sending message to user %s: %v", user.Username, err)
 				break ReadLoop
 			}

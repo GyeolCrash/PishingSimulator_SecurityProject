@@ -72,9 +72,8 @@ FishingSimulator_SecurityProject/
 │   ├── handler/  
 │   │   ├── audio_connection.go
 │   │   ├── audio_process.go
-│   │   ├── auth_handler.go
-│   │   ├── history.go
-│   │   ├── text_connection.go        
+│   │   ├── text_connection.go    
+│   │   ├── user_handler.go    
 │   │   └── websocket_handler.go  
 │   ├── llm/
 │   │   ├── client.go

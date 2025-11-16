@@ -11,6 +11,8 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"PishingSimulator_SecurityProject/internal/auth"
@@ -20,11 +22,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
 )
-
-/*
-// [테스트용 코드]
-var users = make(map[string]models.User)
-*/
 
 // /Signup 요청 바디
 type SignupRequest struct {
@@ -52,7 +49,7 @@ type LoginSuccessResponse struct {
 // Signup godoc
 // @Summary      회원가입 (Signup)
 // @Description  새로운 사용자 계정을 생성합니다.
-// @Tags         Auth
+// @Tags         User
 // @Accept       json
 // @Produce      json
 // @Param        request body handler.SignupRequest true "회원가입 요청 정보"
@@ -108,7 +105,7 @@ func Signup(c *gin.Context) {
 // Login godoc
 // @Summary      로그인 (Login)
 // @Description  사용자명과 비밀번호로 로그인하고 JWT 토큰을 발급받습니다.
-// @Tags         Auth
+// @Tags         User
 // @Accept       json
 // @Produce      json
 // @Param        request body handler.LoginRequest true "로그인 요청 정보"
@@ -173,4 +170,62 @@ func Login(c *gin.Context) {
 func Profile(c *gin.Context) {
 	username, _ := c.Get("username")
 	c.JSON(http.StatusOK, gin.H{"message": "this is a protected profile", "username": username})
+}
+
+// GetCallHistory godoc
+// @Summary      사용자 통화 기록 조회
+// @Description  사용자의 과거 시뮬레이션(통화/채팅) 기록 목록을 최신순으로 반환합니다.
+// @Tags         API (Protected)
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200      {object}  map[string][]models.Record "history: [기록 배열]"
+// @Failure      401      {object}  handler.ErrorResponse "인증 실패"
+// @Failure      500      {object}  handler.ErrorResponse "서버 내부 오류"
+// @Router       /api/history [get]
+func GetCallHistory(c *gin.Context) {
+	username := c.GetString("username")
+
+	userID, err := storage.GetUserIDByUsername(username)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get user"})
+		return
+	}
+
+	records, err := storage.GetRecordsByUserID(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch records"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"history": records})
+}
+
+// StreamAudio godoc
+// @Summary      녹음된 오디오 파일 재생 (스트리밍)
+// @Description  특정 통화 기록의 오디오 파일(.mp3)을 스트리밍합니다.
+// @Description  <br>
+// @Description  **인증 방법:**
+// @Description  1. **Header:** `Authorization: Bearer {token}` (안드로이드 권장)
+// @Description  2. **Query:** `?token={token}` (웹/HTML 오디오 태그용)
+// @Tags         API (Protected)
+// @Produce      audio/mpeg
+// @Security     BearerAuth
+// @Param        filename path      string  true  "오디오 파일명 (예: session_uuid.mp3)"
+// @Param        token    query     string  false "JWT 토큰 (헤더 사용 시 생략 가능)"
+// @Success      200      {file}    file    "오디오 파일 스트림"
+// @Failure      401      {object}  handler.ErrorResponse "인증 실패"
+// @Failure      404      {object}  handler.ErrorResponse "파일을 찾을 수 없음"
+// @Router       /api/history/audio/{filename} [get]
+func StreamAudio(c *gin.Context) {
+	username := c.GetString("username")
+	filename := c.Param("filename")
+
+	filePath := filepath.Join("data", "records", username, filename)
+
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Audio file not found"})
+		return
+	}
+
+	c.File(filePath)
 }

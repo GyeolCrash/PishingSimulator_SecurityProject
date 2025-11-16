@@ -15,6 +15,104 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/api/history": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "사용자의 과거 시뮬레이션(통화/채팅) 기록 목록을 최신순으로 반환합니다.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "API (Protected)"
+                ],
+                "summary": "사용자 통화 기록 조회",
+                "responses": {
+                    "200": {
+                        "description": "history: [기록 배열]",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/definitions/PishingSimulator_SecurityProject_internal_models.Record"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "인증 실패",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "서버 내부 오류",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/history/audio/{filename}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "특정 통화 기록의 오디오 파일(.mp3)을 스트리밍합니다.\n\u003cbr\u003e\n**인증 방법:**\n1. **Header:** ` + "`" + `Authorization: Bearer {token}` + "`" + ` (안드로이드 권장)\n2. **Query:** ` + "`" + `?token={token}` + "`" + ` (웹/HTML 오디오 태그용)",
+                "produces": [
+                    "audio/mpeg"
+                ],
+                "tags": [
+                    "API (Protected)"
+                ],
+                "summary": "녹음된 오디오 파일 재생 (스트리밍)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "오디오 파일명 (예: session_uuid.mp3)",
+                        "name": "filename",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "JWT 토큰 (헤더 사용 시 생략 가능)",
+                        "name": "token",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "오디오 파일 스트림",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "401": {
+                        "description": "인증 실패",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "파일을 찾을 수 없음",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/profile": {
             "get": {
                 "security": [
@@ -48,7 +146,7 @@ const docTemplate = `{
                     "401": {
                         "description": "인증 토큰 누락 또는 만료",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
                         }
                     }
                 }
@@ -64,7 +162,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "Auth"
+                    "User"
                 ],
                 "summary": "로그인 (Login)",
                 "parameters": [
@@ -74,7 +172,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/handler.LoginRequest"
+                            "$ref": "#/definitions/internal_handler.LoginRequest"
                         }
                     }
                 ],
@@ -82,25 +180,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/handler.LoginSuccessResponse"
+                            "$ref": "#/definitions/internal_handler.LoginSuccessResponse"
                         }
                     },
                     "400": {
                         "description": "잘못된 요청",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "인증 실패 (자격 증명 오류)",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "서버 내부 오류",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
                         }
                     }
                 }
@@ -116,7 +214,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "Auth"
+                    "User"
                 ],
                 "summary": "회원가입 (Signup)",
                 "parameters": [
@@ -126,7 +224,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/handler.SignupRequest"
+                            "$ref": "#/definitions/internal_handler.SignupRequest"
                         }
                     }
                 ],
@@ -134,19 +232,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/handler.SuccessResponse"
+                            "$ref": "#/definitions/internal_handler.SuccessResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
                         }
                     }
                 }
@@ -154,29 +252,35 @@ const docTemplate = `{
         },
         "/ws/simulation": {
             "get": {
-                "description": "지정된 시나리오와 모드로 실시간 시뮬레이션을 위한 WebSocket 연결을 시작합니다.\n\u003cbr\u003e\n**참고: 이것은 표준 HTTP API가 아닙니다.**\n클라이언트는 ` + "`" + `ws://` + "`" + ` 또는 ` + "`" + `wss://` + "`" + ` 스킴을 사용하여 이 엔드포인트에 연결해야 합니다.\n인증은 HTTP Header가 아닌 **쿼리 파라미터('token')**를 통해 수행됩니다.",
-                "tags": [
-                    "WebSocket (Simulation)"
+                "description": "지정된 시나리오와 모드로 실시간 시뮬레이션을 위한 WebSocket 연결을 시작합니다.\n\u003cbr\u003e\n**[중요]** 이것은 표준 HTTP API가 아닙니다. ` + "`" + `ws://` + "`" + ` 또는 ` + "`" + `wss://` + "`" + ` 스킴을 사용해야 합니다.\n**인증:** WebSocket 연결 시에는 HTTP Header를 사용할 수 없으므로, **Query Parameter(` + "`" + `token` + "`" + `)**로 JWT를 전달해야 합니다.",
+                "consumes": [
+                    "application/json"
                 ],
-                "summary": "시뮬레이션 WebSocket 연결",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Simulation (WebSocket)"
+                ],
+                "summary": "보이스피싱 시뮬레이션 시작 (WebSocket)",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "로그인 시 발급받은 JWT 토큰",
+                        "description": "Bearer 토큰 (접두사 없이 토큰 값만 입력)",
                         "name": "token",
                         "in": "query",
                         "required": true
                     },
                     {
                         "type": "string",
-                        "description": "시나리오 키 (예: loan_scam)",
+                        "description": "시나리오 키 (예: loan_scam, institution_impersonation)",
                         "name": "scenario",
                         "in": "query",
                         "required": true
                     },
                     {
                         "type": "string",
-                        "description": "시뮬레이션 모드 (text 또는 voice)",
+                        "description": "모드 선택 (text: 텍스트 채팅, voice: 실시간 음성 통화)",
                         "name": "mode",
                         "in": "query",
                         "required": true
@@ -184,27 +288,27 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "101": {
-                        "description": "101 Switching Protocols (WebSocket으로 프로토콜 전환 성공)",
+                        "description": "Switching Protocols",
                         "schema": {
                             "type": "string"
                         }
                     },
                     "400": {
-                        "description": "잘못된 파라미터 (scenario, mode)",
+                        "description": "잘못된 파라미터",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "401": {
-                        "description": "토큰 누락 또는 유효하지 않은 토큰",
+                        "description": "인증 실패",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "WebSocket 업그레이드 실패",
-                        "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
@@ -212,7 +316,41 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "handler.ErrorResponse": {
+        "PishingSimulator_SecurityProject_internal_models.Record": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "file_path": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "scenario": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "PishingSimulator_SecurityProject_internal_models.UserProfile": {
+            "type": "object",
+            "properties": {
+                "age": {
+                    "type": "integer"
+                },
+                "gender": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handler.ErrorResponse": {
             "type": "object",
             "properties": {
                 "error": {
@@ -221,7 +359,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handler.LoginRequest": {
+        "internal_handler.LoginRequest": {
             "type": "object",
             "properties": {
                 "password": {
@@ -234,7 +372,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handler.LoginSuccessResponse": {
+        "internal_handler.LoginSuccessResponse": {
             "type": "object",
             "properties": {
                 "token": {
@@ -243,7 +381,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handler.SignupRequest": {
+        "internal_handler.SignupRequest": {
             "type": "object",
             "properties": {
                 "password": {
@@ -251,7 +389,7 @@ const docTemplate = `{
                     "example": "password123"
                 },
                 "profile": {
-                    "$ref": "#/definitions/models.UserProfile"
+                    "$ref": "#/definitions/PishingSimulator_SecurityProject_internal_models.UserProfile"
                 },
                 "username": {
                     "type": "string",
@@ -259,26 +397,12 @@ const docTemplate = `{
                 }
             }
         },
-        "handler.SuccessResponse": {
+        "internal_handler.SuccessResponse": {
             "type": "object",
             "properties": {
                 "message": {
                     "type": "string",
                     "example": "User created successfully"
-                }
-            }
-        },
-        "models.UserProfile": {
-            "type": "object",
-            "properties": {
-                "age": {
-                    "type": "integer"
-                },
-                "gender": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
                 }
             }
         }

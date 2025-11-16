@@ -23,9 +23,6 @@ const docTemplate = `{
                     }
                 ],
                 "description": "사용자의 과거 시뮬레이션(통화/채팅) 기록 목록을 최신순으로 반환합니다.",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -37,13 +34,7 @@ const docTemplate = `{
                     "200": {
                         "description": "history: [기록 배열]",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "array",
-                                "items": {
-                                    "$ref": "#/definitions/PishingSimulator_SecurityProject_internal_models.Record"
-                                }
-                            }
+                            "$ref": "#/definitions/internal_handler.HistoryResponse"
                         }
                     },
                     "401": {
@@ -53,7 +44,7 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "서버 내부 오류",
+                        "description": "DB 조회 실패 등 서버 오류",
                         "schema": {
                             "$ref": "#/definitions/internal_handler.ErrorResponse"
                         }
@@ -68,14 +59,14 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "특정 통화 기록의 오디오 파일(.mp3)을 스트리밍합니다.\n\u003cbr\u003e\n**인증 방법:**\n1. **Header:** ` + "`" + `Authorization: Bearer {token}` + "`" + ` (안드로이드 권장)\n2. **Query:** ` + "`" + `?token={token}` + "`" + ` (웹/HTML 오디오 태그용)",
+                "description": "특정 통화 기록의 오디오 파일(.mp3)을 재생합니다.\n\u003cbr\u003e **[인증]** Header에 ` + "`" + `Authorization: Bearer ...` + "`" + `를 넣거나, URL 파라미터 ` + "`" + `?token=...` + "`" + `을 사용하세요.",
                 "produces": [
                     "audio/mpeg"
                 ],
                 "tags": [
                     "API (Protected)"
                 ],
-                "summary": "녹음된 오디오 파일 재생 (스트리밍)",
+                "summary": "녹음된 오디오 파일 스트리밍",
                 "parameters": [
                     {
                         "type": "string",
@@ -86,14 +77,14 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "JWT 토큰 (헤더 사용 시 생략 가능)",
+                        "description": "JWT 토큰 (Header 사용 불가 시)",
                         "name": "token",
                         "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "오디오 파일 스트림",
+                        "description": "오디오 바이너리 데이터",
                         "schema": {
                             "type": "file"
                         }
@@ -105,7 +96,7 @@ const docTemplate = `{
                         }
                     },
                     "404": {
-                        "description": "파일을 찾을 수 없음",
+                        "description": "해당 파일을 찾을 수 없음",
                         "schema": {
                             "$ref": "#/definitions/internal_handler.ErrorResponse"
                         }
@@ -355,7 +346,18 @@ const docTemplate = `{
             "properties": {
                 "error": {
                     "type": "string",
-                    "example": "Username already exists"
+                    "example": "에러 원인 및 설명"
+                }
+            }
+        },
+        "internal_handler.HistoryResponse": {
+            "type": "object",
+            "properties": {
+                "history": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/PishingSimulator_SecurityProject_internal_models.Record"
+                    }
                 }
             }
         },

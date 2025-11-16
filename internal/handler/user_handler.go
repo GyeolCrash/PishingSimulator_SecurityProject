@@ -40,10 +40,21 @@ type SuccessResponse struct {
 	Message string `json:"message" example:"User created successfully"`
 }
 type ErrorResponse struct {
-	Error string `json:"error" example:"Username already exists"`
+	Error string `json:"error" example:"에러 원인 및 설명"`
 }
 type LoginSuccessResponse struct {
 	Token string `json:"token" example:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."`
+}
+
+// 프로필 조회 응답
+type ProfileResponse struct {
+	Message  string `json:"message" example:"this is a protected profile"`
+	Username string `json:"username" example:"gildong"`
+}
+
+// 통화 기록 목록 응답 (Wrapper)
+type HistoryResponse struct {
+	History []models.Record `json:"history"`
 }
 
 // Signup godoc
@@ -176,12 +187,11 @@ func Profile(c *gin.Context) {
 // @Summary      사용자 통화 기록 조회
 // @Description  사용자의 과거 시뮬레이션(통화/채팅) 기록 목록을 최신순으로 반환합니다.
 // @Tags         API (Protected)
-// @Accept       json
 // @Produce      json
 // @Security     BearerAuth
-// @Success      200      {object}  map[string][]models.Record "history: [기록 배열]"
-// @Failure      401      {object}  handler.ErrorResponse "인증 실패"
-// @Failure      500      {object}  handler.ErrorResponse "서버 내부 오류"
+// @Success      200 {object} handler.HistoryResponse "history: [기록 배열]"
+// @Failure      401 {object} handler.ErrorResponse "인증 실패"
+// @Failure      500 {object} handler.ErrorResponse "DB 조회 실패 등 서버 오류"
 // @Router       /api/history [get]
 func GetCallHistory(c *gin.Context) {
 	username := c.GetString("username")
@@ -197,30 +207,28 @@ func GetCallHistory(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch records"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"history": records})
+	c.JSON(http.StatusOK, HistoryResponse{History: records})
 }
 
 // StreamAudio godoc
-// @Summary      녹음된 오디오 파일 재생 (스트리밍)
-// @Description  특정 통화 기록의 오디오 파일(.mp3)을 스트리밍합니다.
-// @Description  <br>
-// @Description  **인증 방법:**
-// @Description  1. **Header:** `Authorization: Bearer {token}` (안드로이드 권장)
-// @Description  2. **Query:** `?token={token}` (웹/HTML 오디오 태그용)
+// @Summary      녹음된 오디오 파일 스트리밍
+// @Description  특정 통화 기록의 오디오 파일(.mp3)을 재생합니다.
+// @Description  <br> **[인증]** Header에 `Authorization: Bearer ...`를 넣거나, URL 파라미터 `?token=...`을 사용하세요.
 // @Tags         API (Protected)
 // @Produce      audio/mpeg
 // @Security     BearerAuth
 // @Param        filename path      string  true  "오디오 파일명 (예: session_uuid.mp3)"
-// @Param        token    query     string  false "JWT 토큰 (헤더 사용 시 생략 가능)"
-// @Success      200      {file}    file    "오디오 파일 스트림"
+// @Param        token    query     string  false "JWT 토큰 (Header 사용 불가 시)"
+// @Success      200      {file}    file    "오디오 바이너리 데이터"
 // @Failure      401      {object}  handler.ErrorResponse "인증 실패"
-// @Failure      404      {object}  handler.ErrorResponse "파일을 찾을 수 없음"
+// @Failure      404      {object}  handler.ErrorResponse "해당 파일을 찾을 수 없음"
 // @Router       /api/history/audio/{filename} [get]
 func StreamAudio(c *gin.Context) {
 	username := c.GetString("username")
 	filename := c.Param("filename")
 
-	filePath := filepath.Join("data", "records", username, filename)
+	cleanFilename := filepath.Base(filename)
+	filePath := filepath.Join("data", "records", username, cleanFilename)
 
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Audio file not found"})

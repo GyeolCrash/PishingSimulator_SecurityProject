@@ -17,16 +17,6 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-const testAudioDir = "testdata/received_files"
-
-// Make directory for audio test
-func init() {
-	if err := os.MkdirAll(testAudioDir, 0755); err != nil {
-		log.Fatalf("Failed to create test audio directory: %v", err)
-	}
-	log.Printf("Test audio files will be stored in: %s", testAudioDir)
-}
-
 func manageAudioSession(conn *websocket.Conn, user models.User, parentCtx context.Context, scenarioKey string) {
 	defer conn.Close()
 	log.Printf("Audio session started for user: %s", user.Username)

@@ -25,8 +25,15 @@ definitions:
   internal_handler.ErrorResponse:
     properties:
       error:
-        example: Username already exists
+        example: 에러 원인 및 설명
         type: string
+    type: object
+  internal_handler.HistoryResponse:
+    properties:
+      history:
+        items:
+          $ref: '#/definitions/PishingSimulator_SecurityProject_internal_models.Record'
+        type: array
     type: object
   internal_handler.LoginRequest:
     properties:
@@ -68,8 +75,6 @@ info:
 paths:
   /api/history:
     get:
-      consumes:
-      - application/json
       description: 사용자의 과거 시뮬레이션(통화/채팅) 기록 목록을 최신순으로 반환합니다.
       produces:
       - application/json
@@ -77,17 +82,13 @@ paths:
         "200":
           description: 'history: [기록 배열]'
           schema:
-            additionalProperties:
-              items:
-                $ref: '#/definitions/PishingSimulator_SecurityProject_internal_models.Record'
-              type: array
-            type: object
+            $ref: '#/definitions/internal_handler.HistoryResponse'
         "401":
           description: 인증 실패
           schema:
             $ref: '#/definitions/internal_handler.ErrorResponse'
         "500":
-          description: 서버 내부 오류
+          description: DB 조회 실패 등 서버 오류
           schema:
             $ref: '#/definitions/internal_handler.ErrorResponse'
       security:
@@ -98,18 +99,15 @@ paths:
   /api/history/audio/{filename}:
     get:
       description: |-
-        특정 통화 기록의 오디오 파일(.mp3)을 스트리밍합니다.
-        <br>
-        **인증 방법:**
-        1. **Header:** `Authorization: Bearer {token}` (안드로이드 권장)
-        2. **Query:** `?token={token}` (웹/HTML 오디오 태그용)
+        특정 통화 기록의 오디오 파일(.mp3)을 재생합니다.
+        <br> **[인증]** Header에 `Authorization: Bearer ...`를 넣거나, URL 파라미터 `?token=...`을 사용하세요.
       parameters:
       - description: '오디오 파일명 (예: session_uuid.mp3)'
         in: path
         name: filename
         required: true
         type: string
-      - description: JWT 토큰 (헤더 사용 시 생략 가능)
+      - description: JWT 토큰 (Header 사용 불가 시)
         in: query
         name: token
         type: string
@@ -117,7 +115,7 @@ paths:
       - audio/mpeg
       responses:
         "200":
-          description: 오디오 파일 스트림
+          description: 오디오 바이너리 데이터
           schema:
             type: file
         "401":
@@ -125,12 +123,12 @@ paths:
           schema:
             $ref: '#/definitions/internal_handler.ErrorResponse'
         "404":
-          description: 파일을 찾을 수 없음
+          description: 해당 파일을 찾을 수 없음
           schema:
             $ref: '#/definitions/internal_handler.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: 녹음된 오디오 파일 재생 (스트리밍)
+      summary: 녹음된 오디오 파일 스트리밍
       tags:
       - API (Protected)
   /api/profile:
